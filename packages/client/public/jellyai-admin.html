@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JellyAI 管理后台</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.ico">
+  <link rel="stylesheet" href="/jellyai-admin.css?v=20260525-admin3">
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="admin-brand">
+        <img src="/logo.png" alt="JellyAI">
+        <div>
+          <strong>JellyAI</strong>
+          <span>管理后台 Demo</span>
+        </div>
+      </div>
+      <nav class="admin-nav" aria-label="后台导航">
+        <a href="#overview">总览</a>
+        <a href="#users">授权用户</a>
+        <a href="#credits">积分管理</a>
+        <a href="#models">模型管理</a>
+        <a href="#skills">Skill 管理</a>
+        <a href="#gateway">模型网关</a>
+      </nav>
+      <div class="admin-side-note">
+        <span>本地 JellyAI 客户端</span>
+        <strong>云端统一鉴权 / 扣积分 / 调模型</strong>
+      </div>
+    </aside>
+
+    <main class="admin-main">
+      <header class="admin-header">
+        <div>
+          <h1>JellyAI 管理后台</h1>
+          <p>管理员控制用户授权、积分余额、可用 skills 和模型网关策略。</p>
+        </div>
+        <a class="admin-open-app" href="/#/hermes/chat">返回本地客户端</a>
+      </header>
+
+      <section class="overview-grid" id="overview">
+        <article class="metric-card">
+          <span>活跃用户数</span>
+          <strong data-active-users>128</strong>
+          <p>近 7 天登录过 JellyAI 的授权用户</p>
+        </article>
+        <article class="metric-card">
+          <span>今日模型调用次数</span>
+          <strong data-model-calls>3,482</strong>
+          <p>全部由 JellyAI 模型网关转发</p>
+        </article>
+        <article class="metric-card">
+          <span>今日消耗积分</span>
+          <strong data-total-credits>315</strong>
+          <p>聊天、智能客服和客户跟进合计消耗</p>
+        </article>
+        <article class="metric-card status-ok">
+          <span>模型网关状态</span>
+          <strong data-gateway-status>运行中</strong>
+          <p>鉴权、扣费、模型调用、日志记录正常</p>
+        </article>
+      </section>
+
+      <section class="admin-section" id="users">
+        <div class="section-head">
+          <div>
+            <h2>用户授权管理</h2>
+            <p>控制授权密钥、到期时间、剩余积分和已开通 Skill。</p>
+          </div>
+          <button type="button" class="secondary-btn" data-demo-toast="已生成新的演示授权密钥">生成授权密钥</button>
+        </div>
+        <div class="admin-table user-table">
+          <div class="table-row table-head">
+            <span>用户</span>
+            <span>授权密钥</span>
+            <span>到期时间</span>
+            <span>剩余积分</span>
+            <span>已开通 Skill</span>
+            <span>状态</span>
+          </div>
+          <div class="table-row" data-user-row>
+            <span data-user-name>广州迅达物流</span>
+            <code data-user-key>JAI-LG-84K2-2026</code>
+            <span data-user-expires>2026-06-30</span>
+            <strong data-user-credits>10,000</strong>
+            <span data-user-skills>物流助手 / 智能客服 / 客户跟进</span>
+            <mark class="state-ok" data-user-status>正常</mark>
+          </div>
+          <div class="table-row">
+            <span>华东冷链试用</span>
+            <code>JAI-LG-73M9-TRIAL</code>
+            <span>2026-05-31</span>
+            <strong>2,360</strong>
+            <span>物流助手</span>
+            <mark class="state-warn">到期提醒</mark>
+          </div>
+          <div class="table-row">
+            <span>内部测试账号</span>
+            <code>JAI-IN-0001-TEST</code>
+            <span>2026-12-31</span>
+            <strong>50,000</strong>
+            <span>全部 Skill</span>
+            <mark class="state-muted">冻结</mark>
+          </div>
+        </div>
+      </section>
+
+      <section class="admin-two-col">
+        <article class="admin-section" id="credits">
+          <div class="section-head">
+            <div>
+              <h2>积分管理</h2>
+              <p>演示给用户增加积分、扣减积分和查看流水。</p>
+            </div>
+          </div>
+          <div class="credit-tools">
+            <label>
+              用户
+              <select>
+                <option>广州迅达物流</option>
+                <option>华东冷链试用</option>
+                <option>内部测试账号</option>
+              </select>
+            </label>
+            <label>
+              积分数量
+              <input type="number" value="1000" min="1" step="100" data-credit-amount>
+            </label>
+          <div class="credit-actions">
+              <button type="button" class="primary-btn" data-credit-add>增加积分</button>
+              <button type="button" class="secondary-btn danger" data-credit-subtract>扣减积分</button>
+            </div>
+          </div>
+          <h3 class="subsection-title">积分流水</h3>
+          <div class="ledger" data-ledger>
+            <div><span>+10,000</span><p>新用户开通物流行业试用版</p><time>今天 09:20</time></div>
+            <div><span>-315</span><p>AI 对话与物流助手调用消耗</p><time>今天 11:48</time></div>
+            <div><span>-85</span><p>智能客服自动回复消耗</p><time>今天 12:10</time></div>
+          </div>
+        </article>
+
+        <article class="admin-section" id="gateway">
+          <div class="section-head">
+            <div>
+              <h2>模型网关说明</h2>
+              <p>普通用户不能自己配置模型，所有请求经过 JellyAI。</p>
+            </div>
+          </div>
+          <ol class="gateway-flow">
+            <li><strong>用户发起请求</strong><span>本地 JellyAI 客户端发送 skill、消息和授权 token。</span></li>
+            <li><strong>网关鉴权</strong><span>检查密钥、到期时间、套餐权限和剩余积分。</span></li>
+            <li><strong>扣除积分</strong><span>根据模型成本倍率和 skill 类型计算消耗。</span></li>
+            <li><strong>调用模型</strong><span>使用 JellyAI 统一模型池，不暴露模型密钥给用户。</span></li>
+            <li><strong>记录日志</strong><span>保存调用记录、成本、用户和 skill 数据。</span></li>
+          </ol>
+        </article>
+      </section>
+
+      <section class="admin-section" id="models">
+        <div class="section-head">
+          <div>
+            <h2>模型管理</h2>
+            <p>管理员维护供应商、模型、成本倍率和默认模型。</p>
+          </div>
+          <button type="button" class="secondary-btn" data-demo-toast="已保存模型路由策略">保存路由策略</button>
+        </div>
+        <form class="model-form" data-model-form>
+          <label>
+            供应商
+            <input type="text" name="provider" value="JellyAI Gateway">
+          </label>
+          <label>
+            模型名称
+            <input type="text" name="name" placeholder="例如 jelly-logistics-pro">
+          </label>
+          <label>
+            API Key
+            <input type="password" name="apiKey" placeholder="保存到本地，不展示给用户">
+          </label>
+          <label>
+            成本倍率
+            <input type="number" name="costMultiplier" value="1" min="0.1" step="0.1">
+          </label>
+          <label class="model-default-check">
+            <input type="checkbox" name="default">
+            设为默认模型
+          </label>
+          <button type="submit" class="primary-btn">添加模型</button>
+        </form>
+        <div class="model-grid" data-model-list></div>
+      </section>
+
+      <section class="admin-section" id="skills">
+        <div class="section-head">
+          <div>
+            <h2>Skill 管理</h2>
+            <p>控制每个客户可以使用哪些业务模块。</p>
+          </div>
+        </div>
+        <div class="skill-grid">
+          <label class="skill-card"><input type="checkbox" checked><span><strong>物流助手</strong><small>查物流、异常件解释、客户回复、跟进总结</small></span></label>
+          <label class="skill-card"><input type="checkbox" checked><span><strong>智能客服</strong><small>绑定微信渠道，自动回复客户消息</small></span></label>
+          <label class="skill-card"><input type="checkbox" checked><span><strong>客户跟进</strong><small>根据客服会话生成客户卡片和销售建议</small></span></label>
+          <label class="skill-card"><input type="checkbox"><span><strong>财税助手</strong><small>未来行业模块，当前未开通</small></span></label>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="admin-toast" data-admin-toast></div>
+  <script src="/jellyai-admin.js?v=20260525-admin3"></script>
+</body>
+</html>
