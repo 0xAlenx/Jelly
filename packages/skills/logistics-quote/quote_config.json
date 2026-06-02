@@ -1,0 +1,29 @@
+{
+  "version": "1.4",
+  "query_mode": "rest",
+  "allow_excel_fallback": false,
+  "remote_database_only": true,
+  "debug": false,
+  "max_display_options": 10000,
+  "max_options_display_stage1": 10,
+  "max_options_display_stage2": 10,
+  "max_customer_options": 5,
+  "remote_api": {
+    "base_url": "http://43.156.235.189:8080",
+    "health_endpoint": "/health",
+    "quote_endpoint": "/v1/quote",
+    "timeout_seconds": 30,
+    "api_key": "",
+    "warehouse_zip_hints": {
+      "LAX9": "92376"
+    }
+  },
+  "mcp": {
+    "name": "ouchang-quote-remote",
+    "endpoint": "http://43.156.235.189:8090/mcp",
+    "health": "http://43.156.235.189:8090/health",
+    "tool_quote": "quote_freight",
+    "tool_health": "quote_health"
+  },
+  "session_file": "quote_sessions.json"
+}

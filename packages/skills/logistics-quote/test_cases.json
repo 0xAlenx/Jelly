@@ -1,0 +1,203 @@
+[
+  {
+    "name": "接口健康检查",
+    "command": "run_quote.bat \"/检查报价接口\"",
+    "expected_contains": [
+      "【报价接口检查】",
+      "REST 地址：http://43.156.235.189:8080/health",
+      "状态：可用"
+    ]
+  },
+  {
+    "name": "EU-1 德国单仓海运包税",
+    "command": "run_quote.bat \"/中断并新开 深圳 德国 DTM2 海运 包税 100KG以上 卡派\"",
+    "expected_contains": [
+      "仓库代码：DTM2",
+      "运输方式：海运",
+      "税务类型：包税",
+      "重量：100KG以上",
+      "渠道：促销-欧洲海运普船(卡派) 德国-DTM2",
+      "派送方式：卡派"
+    ],
+    "expected_not_contains": [
+      "运输方式：卡航",
+      "运输方式：空运",
+      "运输方式：铁路",
+      "税务类型：自税",
+      "税务类型：不包税",
+      "递延",
+      "渠道：欧洲/英国成本表 · 海运"
+    ]
+  },
+  {
+    "name": "EU-2 德国多仓海运包税",
+    "command": "run_quote.bat \"/中断并新开 深圳\\n欧洲、德国\\nMHG9 、DTM2、DTM1、BER8、RLG1，海运，包税，100KG以上\\n卡派\"",
+    "expected_contains": [
+      "共识别到 5 个仓库",
+      "MHG9 - 100KG以上",
+      "DTM2 - 100KG以上",
+      "DTM1 - 100KG以上",
+      "BER8 - 100KG以上",
+      "RLG1 - 100KG以上",
+      "运输方式：海运",
+      "税务类型：包税",
+      "重量：100KG以上",
+      "渠道：促销-欧洲海运普船(卡派)",
+      "本批次各仓库重量相同，生产默认仍按仓库分别查询远程数据库"
+    ],
+    "expected_not_contains": [
+      "运输方式：卡航",
+      "运输方式：铁路",
+      "运输方式：空运",
+      "税务类型：自税",
+      "税务类型：不包税",
+      "递延",
+      "渠道：欧洲/英国成本表 · 海运"
+    ]
+  },
+  {
+    "name": "EU-3 德国铁路包税多仓",
+    "command": "run_quote.bat \"/中断并新开 深圳 德国 DTM2 DTM1 铁路 包税 100KG以上 卡派\"",
+    "expected_contains": [
+      "共识别到 2 个仓库",
+      "运输方式：铁路",
+      "税务类型：包税",
+      "重量：100KG以上",
+      "渠道：永恒钻石-欧铁卡派BS-KG 德国-DTM2、DTM1",
+      "渠道：倔强青铜-欧铁经济BS 德国 DTM2"
+    ],
+    "expected_not_contains": [
+      "运输方式：海运",
+      "运输方式：卡航",
+      "运输方式：空运"
+    ]
+  },
+  {
+    "name": "EU-4 德国空运",
+    "command": "run_quote.bat \"/中断并新开 深圳 德国 空运 FBA 普货 100KG以上\"",
+    "expected_contains": [
+      "运输方式：空运",
+      "渠道：欧洲空派普货BS-FBA 德国",
+      "重量：100KG以上"
+    ],
+    "expected_not_contains": [
+      "运输方式：海运",
+      "运输方式：铁路",
+      "运输方式：卡航"
+    ]
+  },
+  {
+    "name": "US-1 LAX9 单仓返回全部匹配方案",
+    "command": "run_quote.bat \"/中断并新开 LAX9，300kg，深圳仓，包税，有什么方案？\"",
+    "expected_contains": [
+      "【当前报价任务】",
+      "状态：等待输入毛利率",
+      "共匹配到",
+      "方案 1｜性价比最高",
+      "渠道：美西整柜直送(统配特惠)｜LAX9",
+      "来源报价表：",
+      "工作簿：",
+      "船期：",
+      "时效最快"
+    ],
+    "expected_not_contains": [
+      "渠道：美国海运 · LAX9"
+    ]
+  },
+  {
+    "name": "US-2 ABE8 单仓渠道清理",
+    "command": "run_quote.bat \"/中断并新开 ABE8--103.68KG\"",
+    "expected_contains": [
+      "仓库代码：ABE8",
+      "渠道：美东整柜直送MDDZG｜ABE8",
+      "运输方式：海运",
+      "船期："
+    ],
+    "expected_not_contains": [
+      "渠道：美国海运 · ABE8",
+      "渠道：美国空派 · ABE8",
+      "渠道：美国铁路 · ABE8"
+    ]
+  },
+  {
+    "name": "US-3 美国多仓批量",
+    "command": "run_quote.bat \"/中断并新开 FWA4--115.2KG\\nSCK4--115.2KG\\nPSP3--195.84KG\\nABE8--103.68KG\\nCLT2--218.88KG\"",
+    "expected_contains": [
+      "【批量询价识别】",
+      "共识别到 5 个仓库",
+      "FWA4 - 115.2KG",
+      "SCK4 - 115.2KG",
+      "PSP3 - 195.84KG",
+      "ABE8 - 103.68KG",
+      "CLT2 - 218.88KG",
+      "本批次各仓库重量不同，已按仓库分别查询远程数据库",
+      "渠道：芝加哥直送专线｜FWA4",
+      "渠道：美东整柜直送MDDZG｜ABE8"
+    ],
+    "expected_not_contains": [
+      "渠道：美国海运 · ABE8"
+    ]
+  },
+  {
+    "name": "最终报价一位小数向上取整",
+    "command": "run_quote.bat \"统一按15%\"",
+    "expected_contains": [
+      "报价单价：",
+      "预估总价：",
+      "【可发送给客户】"
+    ]
+  },
+  {
+    "name": "显式只看空运",
+    "command": "run_quote.bat \"/中断并新开 LAX9，300kg，只看空运\"",
+    "expected_contains": [
+      "运输方式：空运",
+      "共匹配到",
+      "美国空派"
+    ],
+    "expected_not_contains": [
+      "渠道：美国海运 · LAX9"
+    ]
+  },
+  {
+    "name": "口语慢船不强制过滤",
+    "command": "run_quote.bat \"/中断并新开 发慢船，RDU2 190KG\"",
+    "expected_contains": [
+      "仓库代码：RDU2",
+      "共匹配到",
+      "运输方式：空运",
+      "运输方式：海运"
+    ]
+  },
+  {
+    "name": "缺少目的仓信息",
+    "command": "run_quote.bat \"/中断并新开 英国5方，深圳仓，包税\"",
+    "expected_contains": [
+      "等待补充信息",
+      "缺少仓库代码/目的仓信息",
+      "【请客服补充】",
+      "是否FBA"
+    ]
+  },
+  {
+    "name": "向上取整到 1 位小数 - 6.67",
+    "type": "unit_helper",
+    "helper": "ceil_to_1_decimal",
+    "input": 6.67,
+    "expected": "6.7"
+  },
+  {
+    "name": "向上取整到 1 位小数 - 65.53",
+    "type": "unit_helper",
+    "helper": "ceil_to_1_decimal",
+    "input": 65.53,
+    "expected": "65.6"
+  },
+  {
+    "name": "向上取整到 1 位小数 - 6.00",
+    "type": "unit_helper",
+    "helper": "ceil_to_1_decimal",
+    "input": 6.0,
+    "expected": "6.0"
+  }
+]
