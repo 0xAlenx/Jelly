@@ -125,7 +125,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   if (!res.ok) {
     const text = await res.text().catch(() => '')
     if (res.status === 403 && isLocalBff) {
-      if (text.includes('User is disabled or does not exist')) {
+      if (text.includes('User is disabled or does not exist') || text.includes('not permitted in JellyAI managed mode')) {
         clearApiKey()
         emitAuthNotice('expired')
         if (router.currentRoute.value.name !== 'login') {

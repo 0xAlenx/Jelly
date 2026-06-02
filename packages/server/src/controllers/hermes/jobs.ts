@@ -5,6 +5,9 @@ import { join } from 'path'
 import { promisify } from 'util'
 import { getHermesBin } from '../../services/hermes/hermes-path'
 import { getActiveProfileName, getProfileDir } from '../../services/hermes/hermes-profile'
+import { isJellyManagedMode } from '../../services/jellyai/managed-mode'
+import { getOrCreateLocalProxySecret, requireActivatedDeviceSession } from '../../services/jellyai/device-session'
+import { managedChildProcessEnv } from '../../services/jellyai/managed-env'
 
 const execFileAsync = promisify(execFile)
 const TIMEOUT_MS = 60_000
@@ -30,7 +33,7 @@ function normalizeJob(job: JobRecord): JobRecord {
     ? job.skills
     : (job.skill ? [job.skill] : [])
 
-  return {
+  const normalized = {
     ...job,
     id,
     job_id: id,
@@ -55,6 +58,12 @@ function normalizeJob(job: JobRecord): JobRecord {
     origin: job.origin ?? null,
     last_delivery_error: job.last_delivery_error ?? null,
   }
+  if (isJellyManagedMode()) {
+    delete normalized.model
+    delete normalized.provider
+    delete normalized.base_url
+  }
+  return normalized
 }
 
 function readJobs(profile: string, includeDisabled = true): JobRecord[] {
@@ -118,10 +127,21 @@ function getSkills(body: Record<string, any>): string[] | null {
 
 async function runHermesCron(profile: string, args: string[]): Promise<void> {
   const profileDir = resolveProfileDir(profile)
+  const jellyManaged = isJellyManagedMode()
+  if (jellyManaged) await requireActivatedDeviceSession()
   try {
     await execFileAsync(getHermesBin(), args, {
       cwd: process.cwd(),
-      env: { ...process.env, HERMES_HOME: profileDir },
+      env: {
+        ...(jellyManaged ? managedChildProcessEnv() : process.env),
+        HERMES_HOME: profileDir,
+        ...(jellyManaged ? {
+          JELLY_MANAGED_MODE: '1',
+          JELLY_LOCAL_MODEL_PROXY_URL: `http://127.0.0.1:${process.env.PORT || '8648'}/api/jelly/model/v1`,
+          JELLY_LOCAL_PROXY_SECRET: getOrCreateLocalProxySecret(),
+          JELLY_CLIENT_MODEL: process.env.JELLY_CLIENT_MODEL || 'jelly-managed',
+        } : {}),
+      },
       timeout: TIMEOUT_MS,
       maxBuffer: 1024 * 1024,
       windowsHide: true,

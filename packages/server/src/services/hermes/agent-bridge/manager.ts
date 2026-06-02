@@ -5,6 +5,9 @@ import { dirname, isAbsolute, join, resolve } from 'path'
 import { logger } from '../../logger'
 import { detectHermesHome, getHermesBin } from '../hermes-path'
 import { DEFAULT_AGENT_BRIDGE_ENDPOINT } from './client'
+import { isJellyManagedMode } from '../../jellyai/managed-mode'
+import { getOrCreateLocalProxySecret } from '../../jellyai/device-session'
+import { managedChildProcessEnv } from '../../jellyai/managed-env'
 
 const DEFAULT_AGENT_BRIDGE_STARTUP_TIMEOUT_MS = 120000
 const DEFAULT_AGENT_BRIDGE_RESTART_DELAY_MS = 1000
@@ -49,13 +52,21 @@ function envPositiveInt(name: string): number | undefined {
 }
 
 export function buildAgentBridgeProcessEnv(endpoint: string, hermesHome: string | undefined, agentRoot: string | undefined): NodeJS.ProcessEnv {
+  const jellyManaged = isJellyManagedMode()
+  const localProxyBaseUrl = `http://127.0.0.1:${process.env.PORT || '8648'}/api/jelly/model/v1`
   return {
-    ...process.env,
+    ...(jellyManaged ? managedChildProcessEnv() : process.env),
     HERMES_AGENT_BRIDGE_ENDPOINT: endpoint,
     HERMES_HOME: hermesHome,
     HERMES_OPENROUTER_APP_REFERER: process.env.HERMES_OPENROUTER_APP_REFERER || OPENROUTER_WEB_UI_ATTRIBUTION_ENV.HERMES_OPENROUTER_APP_REFERER,
     HERMES_OPENROUTER_APP_TITLE: process.env.HERMES_OPENROUTER_APP_TITLE || OPENROUTER_WEB_UI_ATTRIBUTION_ENV.HERMES_OPENROUTER_APP_TITLE,
     HERMES_OPENROUTER_APP_CATEGORIES: process.env.HERMES_OPENROUTER_APP_CATEGORIES || OPENROUTER_WEB_UI_ATTRIBUTION_ENV.HERMES_OPENROUTER_APP_CATEGORIES,
+    ...(jellyManaged ? {
+      JELLY_MANAGED_MODE: '1',
+      JELLY_LOCAL_MODEL_PROXY_URL: localProxyBaseUrl,
+      JELLY_LOCAL_PROXY_SECRET: getOrCreateLocalProxySecret(),
+      JELLY_CLIENT_MODEL: process.env.JELLY_CLIENT_MODEL || 'jelly-managed',
+    } : {}),
     ...(agentRoot ? { HERMES_AGENT_ROOT: agentRoot } : {}),
   }
 }

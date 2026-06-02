@@ -32,7 +32,8 @@ import { mediaRoutes } from './hermes/media'
 import { proxyRoutes, proxyMiddleware } from './hermes/proxy'
 import { groupChatRoutes, setGroupChatServer } from './hermes/group-chat'
 import { performanceMonitorRoutes } from './hermes/performance-monitor'
-import { jellyaiRoutes } from './hermes/jellyai'
+import { blockManagedModelConfiguration } from '../middleware/jelly-managed-mode'
+import { jellyCloudProtectedRoutes, jellyCloudPublicRoutes } from './hermes/jelly-cloud'
 
 /**
  * Register all routes on the Koa app.
@@ -45,12 +46,14 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(webhookRoutes.routes())
   app.use(authPublicRoutes.routes())
   app.use(ttsRoutes.routes())              // TTS proxy/generation — must be before auth
-  app.use(jellyaiRoutes.routes())          // JellyAI local demo/admin sync API
+  app.use(jellyCloudPublicRoutes.routes()) // Internal bridge proxy with its own local secret
 
   // --- Auth middleware: all routes below require authentication ---
   authMiddleware.forEach((middleware) => app.use(middleware))
+  app.use(blockManagedModelConfiguration)
 
   // --- Protected routes (auth required) ---
+  app.use(jellyCloudProtectedRoutes.routes())
   app.use(authProtectedRoutes.routes())
   app.use(uploadRoutes.routes())
   app.use(updateRoutes.routes())           // Must be before proxy (proxy catch-all matches everything)

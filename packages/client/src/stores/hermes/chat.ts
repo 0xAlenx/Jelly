@@ -9,6 +9,13 @@ import { useProfilesStore } from './profiles'
 import { useSettingsStore } from './settings'
 import { primeCompletionSound, playCompletionSound } from '@/utils/completion-sound'
 import { detectThinkingBoundary } from '@/utils/thinking-parser'
+import { isJellyManagedMode } from '@/config/jellyai'
+
+function emptyAgentOutputMessage(): string {
+  return isJellyManagedMode()
+    ? 'Error: JellyAI did not return a response. Please check your authorization, credit balance, and gateway status, then try again.'
+    : 'Error: Agent returned no output. The model call may have failed (e.g. invalid API key, model not supported by provider, or context exceeded). Check the hermes-agent logs for details.'
+}
 
 // Re-export ContentBlock for convenience
 export type ContentBlock = ContentBlockImport
@@ -1849,7 +1856,7 @@ export const useChatStore = defineStore('chat', () => {
                 addMessage(sid, {
                   id: uid(),
                   role: 'system',
-                  content: 'Error: Agent returned no output. The model call may have failed (e.g. invalid API key, model not supported by provider, or context exceeded). Check the hermes-agent logs for details.',
+                  content: emptyAgentOutputMessage(),
                   timestamp: Date.now(),
                 })
               } else {
@@ -2308,7 +2315,7 @@ export const useChatStore = defineStore('chat', () => {
             addMessage(sid, {
               id: uid(),
               role: 'system',
-              content: 'Error: Agent returned no output. The model call may have failed (e.g. invalid API key, model not supported by provider, or context exceeded). Check the hermes-agent logs for details.',
+              content: emptyAgentOutputMessage(),
               timestamp: Date.now(),
             })
           } else {

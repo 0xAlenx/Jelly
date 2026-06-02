@@ -49,6 +49,70 @@ OPENROUTER_ATTRIBUTION_ENV = {
     "categories": "HERMES_OPENROUTER_APP_CATEGORIES",
 }
 _SURROGATE_RE = re.compile("[\ud800-\udfff]")
+MODEL_PROVIDER_ENV_KEYS = {
+    "AI_GATEWAY_API_KEY",
+    "AI_GATEWAY_BASE_URL",
+    "ALIBABA_CODING_PLAN_API_KEY",
+    "ALIBABA_CODING_PLAN_BASE_URL",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_BASE_URL",
+    "ARCEE_API_KEY",
+    "ARCEE_BASE_URL",
+    "COPILOT_GITHUB_TOKEN",
+    "DASHSCOPE_API_KEY",
+    "DASHSCOPE_BASE_URL",
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_BASE_URL",
+    "GEMINI_API_KEY",
+    "GEMINI_BASE_URL",
+    "GLM_API_KEY",
+    "GLM_BASE_URL",
+    "HF_BASE_URL",
+    "HF_TOKEN",
+    "KILO_API_KEY",
+    "KILOCODE_BASE_URL",
+    "KIMI_BASE_URL",
+    "KIMI_CN_API_KEY",
+    "LM_API_KEY",
+    "LM_BASE_URL",
+    "LONGCAT_API_KEY",
+    "LONGCAT_BASE_URL",
+    "MINIMAX_API_KEY",
+    "MINIMAX_BASE_URL",
+    "MINIMAX_CN_API_KEY",
+    "MINIMAX_CN_BASE_URL",
+    "MOONSHOT_API_KEY",
+    "OLLAMA_API_KEY",
+    "OLLAMA_BASE_URL",
+    "OPENCODE_GO_API_KEY",
+    "OPENCODE_GO_BASE_URL",
+    "OPENCODE_ZEN_API_KEY",
+    "OPENCODE_ZEN_BASE_URL",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_BASE_URL",
+    "STEPFUN_API_KEY",
+    "STEPFUN_BASE_URL",
+    "XAI_API_KEY",
+    "XAI_BASE_URL",
+    "XIAOMI_API_KEY",
+    "XIAOMI_BASE_URL",
+}
+
+
+def _jelly_managed_mode_enabled() -> bool:
+    return os.environ.get("JELLY_MANAGED_MODE", "1").strip().lower() not in {"0", "false", "off", "no"}
+
+
+def _scrub_managed_model_env() -> None:
+    if not _jelly_managed_mode_enabled():
+        return
+    for key in MODEL_PROVIDER_ENV_KEYS:
+        os.environ.pop(key, None)
+
+
+_scrub_managed_model_env()
 
 
 def _bridge_platform() -> str:
@@ -574,6 +638,9 @@ def _refresh_terminal_env() -> None:
 
 
 def _resolve_model(cfg: dict[str, Any]) -> str:
+    _scrub_managed_model_env()
+    if _jelly_managed_mode_enabled():
+        return os.environ.get("JELLY_CLIENT_MODEL", "jelly-managed").strip() or "jelly-managed"
     env_model = (
         os.environ.get("HERMES_MODEL", "")
         or os.environ.get("HERMES_INFERENCE_MODEL", "")
@@ -589,11 +656,44 @@ def _resolve_model(cfg: dict[str, Any]) -> str:
 
 
 def _resolve_runtime(model: str, provider: str | None = None) -> dict[str, Any]:
+    _scrub_managed_model_env()
+    if _jelly_managed_mode_enabled():
+        return {
+            "provider": "custom",
+            "base_url": os.environ.get("JELLY_LOCAL_MODEL_PROXY_URL", "").strip(),
+            "api_key": os.environ.get("JELLY_LOCAL_PROXY_SECRET", "").strip(),
+            "api_mode": "chat_completions",
+        }
     _ensure_agent_imports()
     from hermes_cli.runtime_provider import resolve_runtime_provider
 
     requested = provider or os.environ.get("HERMES_BRIDGE_PROVIDER", "").strip() or None
     return resolve_runtime_provider(requested=requested, target_model=model or None)
+
+
+def _prime_managed_system_prompt(agent: Any, system_message: str | None = None) -> None:
+    """Replace stale local model identity in cached Hermes prompts.
+
+    Managed mode routes models centrally. Existing local sessions may still
+    persist a prompt snapshot containing an old direct provider and model.
+    Rebuild it once with a customer-safe managed identity and persist the
+    replacement so later turns cannot restore stale local routing details.
+    """
+    if not _jelly_managed_mode_enabled():
+        return
+    build_prompt = getattr(agent, "_build_system_prompt", None)
+    if not callable(build_prompt):
+        return
+    prompt = str(build_prompt(system_message) or "")
+    prompt = re.sub(r"(?m)^Model: .*$", "Model: JellyAI managed routing", prompt)
+    prompt = re.sub(r"(?m)^Provider: .*$", "Provider: JellyAI managed gateway", prompt)
+    agent._cached_system_prompt = prompt
+    session_db = getattr(agent, "_session_db", None)
+    if session_db is not None:
+        try:
+            session_db.update_system_prompt(agent.session_id, prompt)
+        except Exception:
+            pass
 
 
 def _load_enabled_toolsets() -> list[str] | None:
@@ -799,6 +899,7 @@ class AgentPool:
                     tool_complete_callback=self._tool_complete_callback(session_id),
                     clarify_callback=self._clarify_callback(session_id),
                 )
+                _prime_managed_system_prompt(agent, prompt)
                 agent.compression_enabled = False
                 self._install_compression_hook(agent, session_id)
 

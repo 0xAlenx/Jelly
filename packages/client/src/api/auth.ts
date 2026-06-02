@@ -27,6 +27,20 @@ export async function loginWithPassword(username: string, password: string): Pro
   return data.token
 }
 
+export async function loginWithLicenseKey(licenseKey: string): Promise<string> {
+  const res = await fetch('/api/jelly/cloud/license-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ licenseKey }),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || 'License login failed')
+  }
+  const data = await res.json()
+  return data.token
+}
+
 export interface CurrentUser {
   id: number
   username: string

@@ -17,8 +17,17 @@ import { getActiveProfileName } from '../../services/hermes/hermes-profile'
 import { HermesSkillInjector } from '../../services/hermes/skill-injector'
 import type { HermesProfile } from '../../services/hermes/hermes-cli'
 import { listUserProfiles } from '../../db/hermes/users-store'
+import { isJellyManagedMode } from '../../services/jellyai/managed-mode'
 
 const bridgeCleanupClient = () => new AgentBridgeClient({ connectRetryMs: 0, timeoutMs: 5000 })
+
+function sanitizeManagedProfile<T extends Record<string, any>>(profile: T): T {
+  if (!isJellyManagedMode()) return profile
+  const safe = { ...profile }
+  delete safe.model
+  delete safe.provider
+  return safe
+}
 
 interface ProfileAvatarMeta {
   type: 'generated' | 'image'
@@ -334,7 +343,7 @@ export async function list(ctx: any) {
       p.active = (p.name === activeProfileName)
     })
 
-    ctx.body = { profiles: attachProfileAvatars(profiles) }
+    ctx.body = { profiles: attachProfileAvatars(profiles).map(sanitizeManagedProfile) }
   } catch (err: any) {
     ctx.status = 500
     ctx.body = { error: err.message }
@@ -408,7 +417,7 @@ export async function get(ctx: any) {
   if (denyProfile(ctx, name)) return
   try {
     const profile = await hermesCli.getProfile(name)
-    ctx.body = { profile: { ...profile, avatar: readProfileAvatar(profile.name) } }
+    ctx.body = { profile: sanitizeManagedProfile({ ...profile, avatar: readProfileAvatar(profile.name) }) }
   } catch (err: any) {
     ctx.status = err.message.includes('not found') ? 404 : 500
     ctx.body = { error: err.message }

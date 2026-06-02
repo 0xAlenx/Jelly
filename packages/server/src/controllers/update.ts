@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from 'child_process'
 import { existsSync } from 'fs'
 import { delimiter, dirname, join } from 'path'
+import { isJellyManagedMode } from '../services/jellyai/managed-mode'
 
 let updateInProgress = false
 
@@ -103,6 +104,15 @@ function spawnRestart(port: string) {
 }
 
 export async function handleUpdate(ctx: any) {
+  if (isJellyManagedMode()) {
+    ctx.status = 403
+    ctx.body = {
+      success: false,
+      message: 'JellyAI managed mode disables client self-update',
+    }
+    return
+  }
+
   if (updateInProgress) {
     ctx.status = 409
     ctx.body = {

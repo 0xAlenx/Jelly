@@ -3,11 +3,15 @@ import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { setApiKey, hasApiKey } from "@/api/client";
-import { fetchAuthStatus, loginWithPassword } from "@/api/auth";
+import { fetchAuthStatus, loginWithLicenseKey, loginWithPassword } from "@/api/auth";
+import { isJellyManagedMode } from "@/config/jellyai";
 
 const { t } = useI18n();
 const router = useRouter();
+const jellyManagedMode = isJellyManagedMode();
 
+const loginMode = ref<"license" | "local">(jellyManagedMode ? "license" : "local");
+const licenseKey = ref("");
 const username = ref("");
 const password = ref("");
 const loading = ref(false);
@@ -28,7 +32,26 @@ onMounted(async () => {
 });
 
 async function handleLogin() {
-  await handlePasswordLogin();
+  if (loginMode.value === "license") await handleLicenseLogin();
+  else await handlePasswordLogin();
+}
+
+async function handleLicenseLogin() {
+  if (!licenseKey.value.trim()) {
+    errorMsg.value = "请输入 JellyAI 授权码";
+    return;
+  }
+  loading.value = true;
+  errorMsg.value = "";
+  try {
+    const sessionToken = await loginWithLicenseKey(licenseKey.value.trim());
+    setApiKey(sessionToken);
+    router.replace("/hermes/chat");
+  } catch (err: any) {
+    errorMsg.value = err.message || "授权码无效或已过期";
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function handlePasswordLogin() {
@@ -62,27 +85,38 @@ async function handlePasswordLogin() {
   <div class="login-view">
     <div class="login-card">
       <div class="login-logo">
-        <img src="/logo.png" alt="Hermes" width="80" height="80" />
+        <img src="/logo.png" alt="JellyAI" width="80" height="80" />
       </div>
-      <h1 class="login-title">{{ t("login.title") }}</h1>
-      <p class="login-desc">{{ t("login.description") }}</p>
-      <p class="login-default-hint">{{ t("login.defaultCredentialsHint") }}</p>
+      <h1 class="login-title">{{ jellyManagedMode ? "JellyAI" : t("login.title") }}</h1>
+      <p class="login-desc">{{ jellyManagedMode ? "请输入 JellyAI 授权码以继续使用。" : t("login.description") }}</p>
+      <p v-if="!jellyManagedMode && loginMode === 'local'" class="login-default-hint">{{ t("login.defaultCredentialsHint") }}</p>
 
       <form class="login-form" @submit.prevent="handleLogin">
-        <input
-          v-model="username"
-          type="text"
-          class="login-input"
-          :placeholder="t('login.usernamePlaceholder')"
-          autofocus
-        />
-        <input
-          v-model="password"
-          type="password"
-          class="login-input"
-          :placeholder="t('login.passwordPlaceholder')"
-          @keyup.enter="handleLogin"
-        />
+        <template v-if="loginMode === 'license'">
+          <input
+            v-model="licenseKey"
+            type="password"
+            class="login-input"
+            placeholder="请输入 JellyAI 授权码"
+            autofocus
+          />
+        </template>
+        <template v-else>
+          <input
+            v-model="username"
+            type="text"
+            class="login-input"
+            :placeholder="t('login.usernamePlaceholder')"
+            autofocus
+          />
+          <input
+            v-model="password"
+            type="password"
+            class="login-input"
+            :placeholder="t('login.passwordPlaceholder')"
+            @keyup.enter="handleLogin"
+          />
+        </template>
 
         <div v-if="errorMsg" class="login-error">{{ errorMsg }}</div>
         <div v-if="showLockResetHint" class="login-lock-hint">

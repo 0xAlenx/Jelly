@@ -5,6 +5,7 @@ import type { HermesProfile, HermesProfileDetail } from '@/api/hermes/profiles'
 import { useProfilesStore } from '@/stores/hermes/profiles'
 import { useI18n } from 'vue-i18n'
 import ProfileAvatar from './ProfileAvatar.vue'
+import { isJellyManagedMode } from '@/config/jellyai'
 
 const props = defineProps<{ profile: HermesProfile }>()
 const emit = defineEmits<{}>()
@@ -13,6 +14,7 @@ const { t } = useI18n()
 const profilesStore = useProfilesStore()
 const message = useMessage()
 const dialog = useDialog()
+const jellyManagedMode = isJellyManagedMode()
 
 const expanded = ref(false)
 const detailLoading = ref(false)
@@ -107,7 +109,7 @@ async function handleExport() {
     </div>
 
     <div class="card-body">
-      <div class="info-row">
+      <div v-if="!jellyManagedMode" class="info-row">
         <span class="info-label">{{ t('profiles.model') }}</span>
         <code class="info-value mono">{{ profile.model }}</code>
       </div>
@@ -128,7 +130,7 @@ async function handleExport() {
     <div v-if="expanded" class="card-detail">
       <NSpin :show="detailLoading" size="small">
         <template v-if="detail">
-          <div class="info-row">
+          <div v-if="!jellyManagedMode" class="info-row">
             <span class="info-label">{{ t('profiles.provider') }}</span>
             <span class="info-value">{{ detail.provider }}</span>
           </div>

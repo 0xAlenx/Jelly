@@ -7,6 +7,7 @@ import { useAppStore } from '@/stores/hermes/app'
 import { useProfilesStore } from '@/stores/hermes/profiles'
 import ProfileAvatar from '@/components/hermes/profiles/ProfileAvatar.vue'
 import { formatTimestampMs } from '@/shared/session-display'
+import { isJellyManagedMode } from '@/config/jellyai'
 
 const props = withDefaults(defineProps<{
   session: Session
@@ -32,8 +33,9 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 const profilesStore = useProfilesStore()
+const jellyManagedMode = isJellyManagedMode()
 const sessionModelName = computed(() =>
-  props.session.model
+  !jellyManagedMode && props.session.model
     ? appStore.displayModelName(props.session.model, props.session.provider)
     : '',
 )
@@ -44,7 +46,7 @@ const profileHasModels = computed(() => {
   return !!profileModels?.groups?.some(group => group.models.length > 0)
 })
 const profileModelsMissing = computed(() =>
-  appStore.profileModelGroups.length > 0 && !profileHasModels.value,
+  !jellyManagedMode && appStore.profileModelGroups.length > 0 && !profileHasModels.value,
 )
 
 let longPressTimer: ReturnType<typeof setTimeout> | null = null

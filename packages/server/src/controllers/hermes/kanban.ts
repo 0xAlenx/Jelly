@@ -12,8 +12,18 @@ import {
   findLatestExactSessionIdWithProfile,
 } from '../../db/hermes/sessions-db'
 import { listUserProfiles } from '../../db/hermes/users-store'
+import { isJellyManagedMode } from '../../services/jellyai/managed-mode'
 
 const DEFAULT_PROFILE = 'default'
+
+function sanitizeManagedSession<T extends Record<string, any>>(session: T): T {
+  if (!isJellyManagedMode()) return session
+  const safe = { ...session }
+  delete safe.model
+  delete safe.provider
+  delete safe.billing_provider
+  return safe
+}
 
 function profileName(value: string | null | undefined): string {
   return value?.trim() || DEFAULT_PROFILE
@@ -340,7 +350,7 @@ export async function get(ctx: Context) {
           if (exactSessionId) {
             const sessionDetail = await getExactSessionDetailFromDbWithProfile(exactSessionId, profile)
             if (sessionDetail) {
-              ;(detail as any).session = {
+              ;(detail as any).session = sanitizeManagedSession({
                 id: exactSessionId,
                 title: sessionDetail.title,
                 source: sessionDetail.source,
@@ -348,7 +358,7 @@ export async function get(ctx: Context) {
                 started_at: sessionDetail.started_at,
                 ended_at: sessionDetail.ended_at,
                 messages: sessionDetail.messages,
-              }
+              })
             }
           } else {
             const results = await searchSessionSummariesWithProfile(detail.task.id, profile, undefined, 5)
@@ -356,7 +366,7 @@ export async function get(ctx: Context) {
               const sessionId = results[0].id
               const sessionDetail = await getSessionDetailFromDbWithProfile(sessionId, profile)
               if (sessionDetail) {
-                ;(detail as any).session = {
+                ;(detail as any).session = sanitizeManagedSession({
                   id: sessionId,
                   title: sessionDetail.title,
                   source: sessionDetail.source,
@@ -364,7 +374,7 @@ export async function get(ctx: Context) {
                   started_at: sessionDetail.started_at,
                   ended_at: sessionDetail.ended_at,
                   messages: sessionDetail.messages,
-                }
+                })
               }
             }
           }
@@ -744,7 +754,7 @@ export async function searchSessions(ctx: Context) {
         const sessionDetail = await getExactSessionDetailFromDbWithProfile(exactSessionId, profile)
         if (sessionDetail) {
           ctx.body = {
-            results: [{
+            results: [sanitizeManagedSession({
               id: exactSessionId,
               source: sessionDetail.source,
               title: sessionDetail.title,
@@ -767,7 +777,7 @@ export async function searchSessions(ctx: Context) {
               matched_message_id: null,
               snippet: sessionDetail.preview,
               rank: 0,
-            }],
+            })],
           }
           return
         }
@@ -776,7 +786,7 @@ export async function searchSessions(ctx: Context) {
 
     const searchQuery = q || task_id
     const results = await searchSessionSummariesWithProfile(searchQuery, profile, undefined, 10)
-    ctx.body = { results }
+    ctx.body = { results: results.map(sanitizeManagedSession) }
   } catch (err: any) {
     ctx.status = 500
     ctx.body = { error: err.message }

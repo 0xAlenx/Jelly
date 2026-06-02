@@ -4,10 +4,12 @@ import { formatTimestampSeconds, getSourceLabel } from '@/shared/session-display
 import { useAppStore } from '@/stores/hermes/app'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { isJellyManagedMode } from '@/config/jellyai'
 
 const props = defineProps<{ humanOnly: boolean }>()
 const { t } = useI18n()
 const appStore = useAppStore()
+const jellyManagedMode = isJellyManagedMode()
 
 const POLL_INTERVAL_MS = 15000
 
@@ -159,8 +161,10 @@ onUnmounted(() => {
         <div class="conversation-monitor__detail-title">{{ selectedSession.title || selectedSession.preview || selectedSession.id }}</div>
         <div class="conversation-monitor__detail-meta">
           <span>{{ getSourceLabel(selectedSession.source) }}</span>
-          <span>·</span>
-          <span :title="selectedSession.model">{{ selectedSessionModelName }}</span>
+          <template v-if="!jellyManagedMode && selectedSessionModelName">
+            <span>·</span>
+            <span :title="selectedSession.model">{{ selectedSessionModelName }}</span>
+          </template>
           <span>·</span>
           <span>{{ linkedSessionsLabel(selectedSession.thread_session_count) }}</span>
         </div>

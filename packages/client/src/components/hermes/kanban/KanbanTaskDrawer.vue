@@ -10,6 +10,7 @@ import { withDefaultAssignee } from '@/utils/hermes/kanban-assignees'
 import HistoryMessageList from '@/components/hermes/chat/HistoryMessageList.vue'
 import type { Session, Message } from '@/stores/hermes/chat'
 import type { KanbanTaskDetail } from '@/api/hermes/kanban'
+import { isJellyManagedMode } from '@/config/jellyai'
 
 const props = defineProps<{
   taskId: string | null
@@ -24,6 +25,7 @@ const { t } = useI18n()
 const router = useRouter()
 const message = useMessage()
 const kanbanStore = useKanbanStore()
+const jellyManagedMode = isJellyManagedMode()
 
 const detail = ref<KanbanTaskDetail | null>(null)
 const loading = ref(false)
@@ -100,7 +102,7 @@ const historySession = computed<Session | null>(() => {
       })),
     createdAt: s.started_at,
     updatedAt: s.ended_at || s.started_at,
-    model: s.model,
+    model: jellyManagedMode ? undefined : s.model,
     messageCount: s.messages.length,
     endedAt: s.ended_at,
   }
@@ -289,7 +291,7 @@ async function handleAssign() {
                 <div class="session-title">{{ session.title || session.id }}</div>
                 <div class="session-meta">
                   <span>{{ session.source }}</span>
-                  <span>{{ session.model }}</span>
+                  <span v-if="!jellyManagedMode">{{ session.model }}</span>
                   <span>{{ formatTime(session.started_at) }}</span>
                 </div>
               </div>

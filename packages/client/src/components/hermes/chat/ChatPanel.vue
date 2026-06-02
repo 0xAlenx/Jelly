@@ -26,6 +26,7 @@ import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
 import DrawerPanel from "./DrawerPanel.vue";
 import OutlinePanel from "./OutlinePanel.vue";
+import { isJellyManagedMode } from "@/config/jellyai";
 
 const chatStore = useChatStore();
 const appStore = useAppStore();
@@ -34,6 +35,7 @@ const sessionBrowserPrefsStore = useSessionBrowserPrefsStore();
 const router = useRouter();
 const message = useMessage();
 const { t } = useI18n();
+const jellyManagedMode = isJellyManagedMode();
 
 const showDrawer = ref(false);
 const drawerActiveTab = ref<"terminal" | "files">("files");
@@ -246,7 +248,7 @@ async function openNewChatModal() {
   newChatLoading.value = true;
   try {
     if (profilesStore.profiles.length === 0) await profilesStore.fetchProfiles();
-    if (appStore.modelGroups.length === 0 && appStore.profileModelGroups.length === 0) {
+    if (!jellyManagedMode && appStore.modelGroups.length === 0 && appStore.profileModelGroups.length === 0) {
       await appStore.loadModels();
     }
     newChatProfile.value =
@@ -273,8 +275,8 @@ function handleNewChatProviderChange(value: string) {
 async function confirmNewChat() {
   const session = chatStore.newChat({
     profile: newChatProfile.value,
-    provider: newChatProvider.value,
-    model: newChatModel.value,
+    provider: jellyManagedMode ? "" : newChatProvider.value,
+    model: jellyManagedMode ? "" : newChatModel.value,
   });
   await router.push({
     name: "hermes.session",
@@ -435,7 +437,7 @@ const contextMenuOptions = computed(() => {
   { label: t("chat.rename"), key: "rename" },
   { label: t("chat.setWorkspace"), key: "workspace" }]
 
-  if (contextSession.value?.source === "cli") {
+  if (!jellyManagedMode && contextSession.value?.source === "cli") {
     options.push({ label: t("chat.setModel"), key: "model" })
   }
 
@@ -939,6 +941,7 @@ async function handleSessionModelCustomSubmit() {
     </NModal>
 
     <NModal
+      v-if="!jellyManagedMode"
       v-model:show="showSessionModelModal"
       preset="card"
       :title="t('chat.setModelTitle')"
@@ -1053,7 +1056,7 @@ async function handleSessionModelCustomSubmit() {
             @update:value="handleNewChatProfileChange"
           />
         </label>
-        <label class="new-chat-field">
+        <label v-if="!jellyManagedMode" class="new-chat-field">
           <span class="new-chat-label">{{ t("models.provider") }}</span>
           <NSelect
             :value="newChatProvider"
@@ -1062,7 +1065,7 @@ async function handleSessionModelCustomSubmit() {
             @update:value="handleNewChatProviderChange"
           />
         </label>
-        <label class="new-chat-field">
+        <label v-if="!jellyManagedMode" class="new-chat-field">
           <span class="new-chat-label">{{ t("models.models") }}</span>
           <NSelect
             v-model:value="newChatModel"
@@ -1077,7 +1080,7 @@ async function handleSessionModelCustomSubmit() {
           <NButton @click="showNewChatModal = false">{{ t("common.cancel") }}</NButton>
           <NButton
             type="primary"
-            :disabled="!newChatProfile || !newChatProvider || !newChatModel"
+            :disabled="!newChatProfile || (!jellyManagedMode && (!newChatProvider || !newChatModel))"
             @click="confirmNewChat"
           >
             {{ t("chat.newChat") }}

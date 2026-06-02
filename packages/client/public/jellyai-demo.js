@@ -1,21 +1,9 @@
 (function () {
   var DEMO_QUERY = "demo";
   var NAV_ROOT_SELECTOR = ".sidebar-nav, .app-sidebar, aside, nav";
-  var CREDIT_COST = 5;
-  var CREDIT_INITIAL = 10000;
-  var CREDIT_TODAY_INITIAL = 315;
-  var creditBalance = readStoredNumber("jellyai_demo_credits", CREDIT_INITIAL);
-  var todayCreditCost = readStoredNumber("jellyai_demo_today_cost", CREDIT_TODAY_INITIAL);
-  var creditLowMode = false;
   var moreNavOpen = true;
   var activeMoreNavLabel = "";
   var observerPending = false;
-  var jellyaiRemoteReady = false;
-  var jellyaiAppState = {
-    plan: "物流行业试用版",
-    expiresAt: "2026-06-30",
-    modelName: "jelly-logistics-pro"
-  };
   var routeChunksPrefetched = false;
   var demos = {
     "customer-service": {
@@ -67,203 +55,12 @@
   }
 
   function prefetchOriginalRouteChunks() {
-    if (routeChunksPrefetched || !document.head) return;
+    if (routeChunksPrefetched) return;
     routeChunksPrefetched = true;
-    [
-      "/assets/js/JobsView-BnxmXoK7.js",
-      "/assets/js/KanbanView-DAKWcgxZ.js",
-      "/assets/js/ChannelsView-Cjs1QNz5.js",
-      "/assets/js/PluginsView-DK0HQ-hF.js",
-      "/assets/js/MemoryView-Ec9r5bzO.js",
-      "/assets/js/ModelsView-D-A-yiQG.js",
-      "/assets/js/LogsView-0U6WWEBc.js",
-      "/assets/js/UsageView-wwztodDs.js",
-      "/assets/js/SettingsView-Dhb8fuWM.js",
-      "/assets/js/PerformanceView-CCavvr6N.js",
-      "/assets/js/SkillsUsageView-BVcynwjc.js",
-      "/assets/js/ProfilesView-HHc3OpBg.js",
-      "/assets/js/SkillsView-B5eWufVk.js"
-    ].forEach(function (href) {
-      if (document.querySelector('link[href="' + href + '"]')) return;
-      var link = document.createElement("link");
-      link.rel = "modulepreload";
-      link.href = href;
-      document.head.appendChild(link);
-    });
-  }
-
-  function readStoredNumber(key, fallback) {
-    try {
-      if (!window.localStorage) return fallback;
-      var stored = parseInt(window.localStorage.getItem(key) || "", 10);
-      return Number.isFinite(stored) ? stored : fallback;
-    } catch (error) {
-      return fallback;
-    }
-  }
-
-  function writeStoredNumber(key, value) {
-    try {
-      if (window.localStorage) window.localStorage.setItem(key, String(value));
-    } catch (error) {
-      return;
-    }
-  }
-
-  function getCredits() {
-    if (creditLowMode) return creditBalance;
-    return jellyaiRemoteReady && Number.isFinite(Number(jellyaiAppState.credits))
-      ? Number(jellyaiAppState.credits)
-      : creditBalance;
-  }
-
-  function getTodayCost() {
-    return jellyaiRemoteReady && Number.isFinite(Number(jellyaiAppState.todayCost))
-      ? Number(jellyaiAppState.todayCost)
-      : todayCreditCost;
-  }
-
-  function getPlan() {
-    return jellyaiAppState.plan || "物流行业试用版";
-  }
-
-  function getExpiry() {
-    return jellyaiAppState.expiresAt || "2026-06-30";
-  }
-
-  function getModelName() {
-    return jellyaiAppState.modelName || "jelly-logistics-pro";
-  }
-
-  function setCredits(nextCredits, nextTodayCost) {
-    creditBalance = Math.max(0, nextCredits);
-    todayCreditCost = Math.max(CREDIT_TODAY_INITIAL, nextTodayCost);
-    writeStoredNumber("jellyai_demo_credits", creditBalance);
-    writeStoredNumber("jellyai_demo_today_cost", todayCreditCost);
-    updateCreditDisplays();
-  }
-
-  function applyJellyAIState(data) {
-    if (!data) return;
-    jellyaiRemoteReady = true;
-    jellyaiAppState = {
-      credits: Number(data.credits),
-      todayCost: Number(data.todayCost),
-      plan: data.plan || "物流行业试用版",
-      expiresAt: data.expiresAt || "2026-06-30",
-      modelName: data.model && data.model.name || jellyaiAppState.modelName || "jelly-logistics-pro"
-    };
-    if (!creditLowMode) {
-      creditBalance = Math.max(0, Number(jellyaiAppState.credits) || 0);
-      todayCreditCost = Math.max(0, Number(jellyaiAppState.todayCost) || 0);
-    }
-    updateCreditDisplays();
-    enableModelControls();
-  }
-
-  function syncJellyAIState() {
-    fetch("/api/jellyai/me", { cache: "no-store" })
-      .then(function (response) {
-        if (!response.ok) throw new Error("JellyAI API unavailable");
-        return response.json();
-      })
-      .then(applyJellyAIState)
-      .catch(function () {
-        jellyaiRemoteReady = false;
-        updateCreditDisplays();
-      });
-  }
-
-  function postCreditDelta(delta, message) {
-    if (!jellyaiRemoteReady) return;
-    fetch("/api/jellyai/admin/credits", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ delta: delta, message: message })
-    })
-      .then(function (response) {
-        if (!response.ok) throw new Error("credit update failed");
-        return response.json();
-      })
-      .then(function () {
-        syncJellyAIState();
-      })
-      .catch(function () {
-        return;
-      });
-  }
-
-  function formatNumber(num) {
-    return String(num).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  }
-
-  function setTextIfChanged(node, value) {
-    var next = String(value);
-    if (node && node.textContent !== next) node.textContent = next;
-  }
-
-  function ensureCreditPanel() {
-    var sidebar = document.querySelector(".sidebar");
-    if (!sidebar || sidebar.querySelector(".jellyai-credit-panel")) return;
-    var panel = document.createElement("section");
-    panel.className = "jellyai-credit-panel";
-    panel.innerHTML =
-      '<div class="jellyai-credit-compact-row">' +
-      '<div><span>剩余积分</span><strong data-jellyai-credit-balance>10,000</strong></div>' +
-      '<div><span>今日消耗</span><strong data-jellyai-today-cost>315</strong></div>' +
-      "</div>" +
-      '<div class="jellyai-credit-model">后台默认：<span data-jellyai-model-name>jelly-logistics-pro</span></div>';
-
-    var footer = sidebar.querySelector(".sidebar-footer");
-    var modelSelector = sidebar.querySelector(".model-selector");
-    if (footer) {
-      sidebar.insertBefore(panel, footer);
-    } else if (modelSelector && modelSelector.parentElement === sidebar) {
-      sidebar.insertBefore(panel, modelSelector);
-    } else {
-      sidebar.appendChild(panel);
-    }
-    updateCreditDisplays();
-  }
-
-  function updateCreditDisplays() {
-    var credits = getCredits();
-    var todayCost = getTodayCost();
-    Array.prototype.forEach.call(document.querySelectorAll("[data-jellyai-credit-balance]"), function (node) {
-      setTextIfChanged(node, formatNumber(credits));
-    });
-    Array.prototype.forEach.call(document.querySelectorAll("[data-jellyai-today-cost]"), function (node) {
-      setTextIfChanged(node, formatNumber(todayCost));
-    });
-    Array.prototype.forEach.call(document.querySelectorAll("[data-jellyai-next-cost]"), function (node) {
-      setTextIfChanged(node, CREDIT_COST);
-    });
-    Array.prototype.forEach.call(document.querySelectorAll("[data-jellyai-plan]"), function (node) {
-      setTextIfChanged(node, getPlan());
-    });
-    Array.prototype.forEach.call(document.querySelectorAll("[data-jellyai-expiry]"), function (node) {
-      setTextIfChanged(node, getExpiry());
-    });
-    Array.prototype.forEach.call(document.querySelectorAll("[data-jellyai-model-name]"), function (node) {
-      setTextIfChanged(node, getModelName());
-    });
-    Array.prototype.forEach.call(document.querySelectorAll("[data-jellyai-credit-low]"), function (button) {
-      setTextIfChanged(button, creditLowMode ? "退出积分不足" : "模拟积分不足");
-      button.classList.toggle("is-low", creditLowMode);
-    });
   }
 
   function enableModelControls() {
-    Array.prototype.forEach.call(document.querySelectorAll(".nav-item"), function (item) {
-      if (/^Models$|模型/.test((item.textContent || "").trim())) {
-        item.classList.remove("jellyai-hidden-model-entry");
-      }
-    });
-    Array.prototype.forEach.call(document.querySelectorAll(".model-selector"), function (selector) {
-      selector.classList.remove("jellyai-managed-model-selector");
-      var existingNote = selector.querySelector(".jellyai-managed-model-note");
-      if (existingNote) existingNote.remove();
-    });
+    return;
   }
 
   function isChatRoute() {
@@ -311,118 +108,6 @@
     });
   }
 
-  function showCreditToast(message, kind) {
-    var existing = document.querySelector(".jellyai-credit-toast");
-    if (existing) existing.remove();
-    var toast = document.createElement("div");
-    toast.className = "jellyai-credit-toast " + (kind || "success");
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(function () {
-      toast.classList.add("show");
-    }, 20);
-    setTimeout(function () {
-      toast.classList.remove("show");
-      setTimeout(function () {
-        toast.remove();
-      }, 180);
-    }, 2200);
-  }
-
-  function consumeCreditsForDemo() {
-    var credits = getCredits();
-    var todayCost = getTodayCost();
-    if (credits < CREDIT_COST) {
-      showCreditToast("积分不足，请联系管理员充值", "error");
-      return false;
-    }
-    if (jellyaiRemoteReady && !creditLowMode) {
-      jellyaiAppState.credits = credits - CREDIT_COST;
-      jellyaiAppState.todayCost = todayCost + CREDIT_COST;
-      updateCreditDisplays();
-      postCreditDelta(-CREDIT_COST, "AI 对话使用物流助手消耗积分");
-    } else {
-      setCredits(credits - CREDIT_COST, todayCost + CREDIT_COST);
-    }
-    showCreditToast("本次已消耗 " + CREDIT_COST + " 积分", "success");
-    return true;
-  }
-
-  window.JellyAIDemoSetLowCredits = function (event) {
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-    if (creditLowMode) {
-      creditLowMode = false;
-      if (jellyaiRemoteReady) {
-        syncJellyAIState();
-      } else {
-        setCredits(CREDIT_INITIAL, CREDIT_TODAY_INITIAL);
-      }
-      showCreditToast("已恢复正常使用", "success");
-      return;
-    }
-    creditLowMode = true;
-    setCredits(0, getTodayCost());
-    showCreditToast("已切换到积分不足演示状态", "error");
-  };
-
-  function isLikelySendButton(button) {
-    var text = (button.textContent || button.getAttribute("aria-label") || button.title || "").trim();
-    var className = String(button.className || "");
-    if (/发送|Send|submit|paper|arrow|chat/i.test(text + " " + className)) return true;
-    var rect = button.getBoundingClientRect();
-    var main = getMain();
-    if (!main) return false;
-    var mainRect = main.getBoundingClientRect();
-    return rect.width <= 72 && rect.height <= 72 && rect.bottom > mainRect.bottom - 160 && rect.right > mainRect.right - 220;
-  }
-
-  function setupCreditInterceptors() {
-    if (window.__jellyaiCreditInterceptorsReady) return;
-    window.__jellyaiCreditInterceptorsReady = true;
-
-    document.addEventListener(
-      "click",
-      function (event) {
-        var lowBtn = event.target.closest && event.target.closest("[data-jellyai-credit-low]");
-        if (lowBtn) {
-          event.preventDefault();
-          event.stopPropagation();
-          window.JellyAIDemoSetLowCredits();
-          return;
-        }
-        if (!isChatRoute()) return;
-        var button = event.target.closest && event.target.closest("button");
-        if (!button || button.closest(".jellyai-chat-credit-bar")) return;
-        if (!isLikelySendButton(button)) return;
-        if (!consumeCreditsForDemo()) {
-          event.preventDefault();
-          event.stopPropagation();
-          event.stopImmediatePropagation();
-        }
-      },
-      true
-    );
-
-    document.addEventListener(
-      "keydown",
-      function (event) {
-        if (!isChatRoute()) return;
-        if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
-        var target = event.target;
-        if (!target || !/TEXTAREA|INPUT/.test(target.tagName || "")) return;
-        if (!consumeCreditsForDemo()) {
-          event.preventDefault();
-          event.stopPropagation();
-          event.stopImmediatePropagation();
-        }
-      },
-      true
-    );
-  }
-
   function findBestNavRoot() {
     var nativeSidebarNav = document.querySelector(".sidebar-nav");
     if (nativeSidebarNav) return nativeSidebarNav;
@@ -463,17 +148,6 @@
       event.stopPropagation();
       routeToDemo(key);
     });
-    return button;
-  }
-
-  function createAdminButton() {
-    var button = document.createElement("button");
-    button.type = "button";
-    button.className = "nav-item jellyai-demo-nav jellyai-admin-nav";
-    button.dataset.jellyaiAdminNav = "true";
-    button.setAttribute("onclick", "window.JellyAIOpenAdminGate && window.JellyAIOpenAdminGate(event)");
-    button.setAttribute("aria-label", "后台管理");
-    button.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10"/><path d="M7 12h4"/><path d="M14 12h3"/><path d="M7 16h10"/></svg><span class="nav-label">后台管理</span>';
     return button;
   }
 
@@ -554,6 +228,7 @@
       return item.label === label;
     });
     if (!config) return false;
+    exitDemoPage();
     activeMoreNavLabel = label;
     if (window.location.hash !== config.hash) window.location.hash = config.hash;
     moreNavOpen = true;
@@ -574,58 +249,8 @@
   }
 
   function openSkillsRoute() {
+    exitDemoPage();
     window.location.hash = "#/hermes/skills";
-  }
-
-  function openAdminGate() {
-    try {
-      if (window.sessionStorage && window.sessionStorage.getItem("jellyai_admin_authed") === "true") {
-        window.location.href = "/jellyai-admin.html";
-        return;
-      }
-    } catch (error) {
-      return;
-    }
-    closeAdminGate();
-    var modal = document.createElement("div");
-    modal.className = "jellyai-admin-gate-backdrop";
-    modal.innerHTML =
-      '<div class="jellyai-admin-gate" role="dialog" aria-modal="true">' +
-      '<button type="button" class="jellyai-admin-gate-close" data-jellyai-admin-close aria-label="关闭">×</button>' +
-      '<div class="jellyai-admin-gate-title">后台管理</div>' +
-      '<div class="jellyai-admin-gate-desc">请输入后台密码后进入模型、积分和授权管理。</div>' +
-      '<input class="jellyai-admin-gate-input" type="password" placeholder="请输入密码" autocomplete="current-password" data-jellyai-admin-password>' +
-      '<div class="jellyai-admin-gate-error" data-jellyai-admin-error></div>' +
-      '<button type="button" class="jellyai-admin-gate-submit" data-jellyai-admin-submit>进入后台</button>' +
-      "</div>";
-    document.body.appendChild(modal);
-    setTimeout(function () {
-      var input = modal.querySelector("[data-jellyai-admin-password]");
-      if (input) input.focus();
-    }, 30);
-  }
-
-  function closeAdminGate() {
-    var existing = document.querySelector(".jellyai-admin-gate-backdrop");
-    if (existing) existing.remove();
-  }
-
-  function submitAdminGate() {
-    var input = document.querySelector("[data-jellyai-admin-password]");
-    var error = document.querySelector("[data-jellyai-admin-error]");
-    if (!input) return;
-    if (input.value === "jellyai") {
-      try {
-        if (window.sessionStorage) window.sessionStorage.setItem("jellyai_admin_authed", "true");
-      } catch (ignore) {
-        return;
-      }
-      closeAdminGate();
-      window.location.href = "/jellyai-admin.html";
-      return;
-    }
-    if (error) error.textContent = "密码错误，请重新输入";
-    input.select();
   }
 
   function navKey(item) {
@@ -648,7 +273,7 @@
     navRoot.classList.remove("jellyai-nav-more-open");
     if (document.body) document.body.classList.remove("jellyai-nav-more-open");
 
-    Array.prototype.slice.call(navRoot.querySelectorAll("[data-jellyai-more-toggle], [data-jellyai-more-menu], [data-jellyai-admin-nav], [data-jellyai-skill-proxy]")).forEach(function (node) {
+    Array.prototype.slice.call(navRoot.querySelectorAll("[data-jellyai-more-toggle], [data-jellyai-more-menu], [data-jellyai-skill-proxy]")).forEach(function (node) {
       node.remove();
     });
 
@@ -770,6 +395,25 @@
       page.remove();
     });
     delete main.dataset.jellyaiDemoPage;
+  }
+
+  function exitDemoPage() {
+    restoreMainFromDemo(getMain());
+    Array.prototype.slice.call(document.querySelectorAll(".jellyai-modal-backdrop")).forEach(function (modal) {
+      modal.remove();
+    });
+  }
+
+  function navigateFromDemo(anchor) {
+    var href = anchor && anchor.getAttribute ? anchor.getAttribute("href") : "";
+    if (!href || href.indexOf("#/hermes/") !== 0) return false;
+    exitDemoPage();
+    if (window.location.hash !== href) {
+      window.location.hash = href;
+    } else {
+      renderCurrentDemo();
+    }
+    return true;
   }
 
   function hideMainForDemo(main, demoPage) {
@@ -1176,13 +820,6 @@
     }
     openSkillsRoute();
   };
-  window.JellyAIOpenAdminGate = function (event) {
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
-    }
-    openAdminGate();
-  };
   window.JellyAIToggleMoreNav = toggleMoreNav;
   window.JellyAIOpenMoreNavItem = openMoreNavItem;
 
@@ -1193,18 +830,18 @@
   });
 
   document.addEventListener("click", function (event) {
+    var nativeNav = event.target.closest && event.target.closest(".sidebar a[href^='#/hermes/']:not(.jellyai-demo-nav)");
+    if (getDemoKey() && nativeNav) {
+      event.preventDefault();
+      event.stopPropagation();
+      navigateFromDemo(nativeNav);
+      return;
+    }
     var skillProxy = event.target.closest && event.target.closest("[data-jellyai-skill-proxy]");
     if (skillProxy) {
       event.preventDefault();
       event.stopPropagation();
       openSkillsRoute();
-      return;
-    }
-    var adminNav = event.target.closest && event.target.closest("[data-jellyai-admin-nav]");
-    if (adminNav) {
-      event.preventDefault();
-      event.stopPropagation();
-      openAdminGate();
       return;
     }
     var moreToggle = event.target.closest && event.target.closest("[data-jellyai-more-toggle]");
@@ -1217,24 +854,6 @@
       event.preventDefault();
       event.stopPropagation();
       openOriginalNav(moreTarget.dataset.jellyaiMoreTarget);
-      return;
-    }
-    if (event.target.closest && event.target.closest("[data-jellyai-admin-submit]")) {
-      event.preventDefault();
-      event.stopPropagation();
-      submitAdminGate();
-      return;
-    }
-    if (event.target.closest && event.target.closest("[data-jellyai-admin-close]")) {
-      event.preventDefault();
-      event.stopPropagation();
-      closeAdminGate();
-      return;
-    }
-    if (event.target.classList && event.target.classList.contains("jellyai-admin-gate-backdrop")) {
-      event.preventDefault();
-      event.stopPropagation();
-      closeAdminGate();
       return;
     }
     var action = event.target.closest && event.target.closest("[data-jellyai-modal]");
@@ -1262,18 +881,6 @@
     }
   }, true);
 
-  document.addEventListener("keydown", function (event) {
-    if (!document.querySelector(".jellyai-admin-gate-backdrop")) return;
-    if (event.key === "Escape") {
-      closeAdminGate();
-      return;
-    }
-    if (event.key === "Enter" && event.target.closest && event.target.closest("[data-jellyai-admin-password]")) {
-      event.preventDefault();
-      submitAdminGate();
-    }
-  }, true);
-
   window.addEventListener("hashchange", function () {
     ensureDemoNav();
     if (isChatRoute()) {
@@ -1291,7 +898,6 @@
       ensureJellyAIBranding();
       if (kind === "sidebar" || kind === "all") {
         ensureDemoNav();
-        ensureCreditPanel();
       }
       if ((kind === "chat" || kind === "all") && isChatRoute()) {
         ensureChatCreditBar();
@@ -1326,15 +932,10 @@
     if (document.body) {
       observer.observe(document.body, { childList: true, subtree: true });
     }
-    syncJellyAIState();
-    setInterval(syncJellyAIState, 5000);
     ensureJellyAIBranding();
     ensureDemoNav();
-    ensureCreditPanel();
-    enableModelControls();
     ensureChatCreditBar();
     ensureComposerVisible();
-    setupCreditInterceptors();
     renderCurrentDemo();
     if ("requestIdleCallback" in window) {
       window.requestIdleCallback(prefetchOriginalRouteChunks, { timeout: 2500 });
@@ -1343,12 +944,9 @@
     }
     setTimeout(ensureDemoNav, 500);
     setTimeout(ensureJellyAIBranding, 550);
-    setTimeout(ensureCreditPanel, 600);
-    setTimeout(enableModelControls, 700);
     setTimeout(ensureChatCreditBar, 800);
     setTimeout(ensureComposerVisible, 900);
     setTimeout(ensureDemoNav, 1500);
-    setTimeout(ensureCreditPanel, 1600);
     setTimeout(ensureChatCreditBar, 1700);
     setTimeout(ensureComposerVisible, 1800);
   }

@@ -35,7 +35,10 @@ import { promisify } from 'util'
 import { createServer } from 'net'
 import yaml from 'js-yaml'
 import { logger } from '../logger'
+import { managedChildProcessEnv } from '../jellyai/managed-env'
+import { isJellyManagedMode } from '../jellyai/managed-mode'
 import { detectHermesHome, getHermesBin } from './hermes-path'
+import { managedGatewayProxyEnv } from './gateway-runner'
 
 const execFileAsync = promisify(execFile)
 
@@ -108,9 +111,11 @@ export function buildGatewayProcessEnv(profileName: string, hermesHome: string):
     }
   }
 
+  const jellyManaged = isJellyManagedMode()
   return {
-    ...base,
+    ...(jellyManaged ? managedChildProcessEnv(base) : base),
     HERMES_HOME: hermesHome,
+    ...(jellyManaged ? managedGatewayProxyEnv(process.env) : {}),
   }
 }
 

@@ -9,6 +9,7 @@ import {
   type UserRecord,
   type UserRole,
 } from '../db/hermes/users-store'
+import { isJellyManagedMode } from '../services/jellyai/managed-mode'
 
 export interface AuthenticatedUser {
   id: number
@@ -41,6 +42,7 @@ declare module 'koa' {
 
 const JWT_AUDIENCE = 'hermes-web-ui'
 const DEFAULT_EXPIRES_SECONDS = 60 * 60 * 24 * 30
+const JELLY_MANAGED_LOCAL_USERNAME = 'jellyai-user'
 
 function base64UrlJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString('base64url')
@@ -88,6 +90,10 @@ function isProtectedHttpPath(path: string): boolean {
   return lowerPath.startsWith('/api') ||
     lowerPath.startsWith('/v1') ||
     lowerPath.startsWith('/upload')
+}
+
+function isAllowedLocalUser(user: Pick<UserRecord, 'username'>): boolean {
+  return !isJellyManagedMode() || user.username === JELLY_MANAGED_LOCAL_USERNAME
 }
 
 export function signUserJwt(user: Pick<UserRecord, 'id' | 'username' | 'role'>, secret: string, now = Date.now()): string {
@@ -150,7 +156,7 @@ export async function authenticateUserToken(token: string): Promise<Authenticate
   if (!payload) return null
 
   const user = findUserById(payload.sub)
-  if (!user || user.status !== 'active') return null
+  if (!user || user.status !== 'active' || !isAllowedLocalUser(user)) return null
   return toAuthenticatedUser(user)
 }
 
@@ -179,9 +185,9 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
   }
 
   const user = findUserById(payload.sub)
-  if (!user || user.status !== 'active') {
+  if (!user || user.status !== 'active' || !isAllowedLocalUser(user)) {
     ctx.status = 403
-    ctx.body = { error: 'User is disabled or does not exist' }
+    ctx.body = { error: 'User is disabled, unavailable, or not permitted in JellyAI managed mode' }
     return
   }
 

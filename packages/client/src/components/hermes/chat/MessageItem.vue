@@ -19,6 +19,7 @@ import {
 import { useGlobalSpeech } from "@/composables/useSpeech";
 import { useVoiceSettings } from "@/composables/useVoiceSettings";
 import { speedToEdgeRate, hzToEdgePitch } from "@/utils/ttsHelpers";
+import { isJellyManagedMode } from "@/config/jellyai";
 
 const TOOL_PAYLOAD_DISPLAY_LIMIT = 1000;
 const JSON_STRING_DISPLAY_LIMIT = 200;
@@ -31,6 +32,7 @@ const JSON_TRUNCATED_KEY = "__truncated__";
 const props = defineProps<{ message: Message; highlight?: boolean; headingIdPrefix?: string }>();
 const { t } = useI18n();
 const toast = useMessage();
+const jellyManagedMode = isJellyManagedMode();
 
 const isSystem = computed(() => props.message.role === "system");
 const isAgentError = computed(() => props.message.role === "assistant" && props.message.systemType === "error");
@@ -49,7 +51,7 @@ const statusItems = computed(() => {
     { key: "status", value: data.isWorking ? "running" : "idle" },
     { key: "source", value: data.source },
     { key: "profile", value: data.profile },
-    { key: "model", value: data.model || "-" },
+    ...(!jellyManagedMode ? [{ key: "model", value: data.model || "-" }] : []),
     { key: "queue", value: data.queueLength ?? 0 },
     { key: "run", value: data.runId || "-" },
   ];

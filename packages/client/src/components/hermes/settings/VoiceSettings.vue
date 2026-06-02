@@ -6,20 +6,24 @@ import { useVoiceSettings } from '@/composables/useVoiceSettings'
 import { useSpeech } from '@/composables/useSpeech'
 import { speedToEdgeRate, hzToEdgePitch } from '@/utils/ttsHelpers'
 import SettingRow from './SettingRow.vue'
+import { isJellyManagedMode } from '@/config/jellyai'
 
 const { t } = useI18n()
 const vs = useVoiceSettings()
 const speech = useSpeech()
+const jellyManagedMode = isJellyManagedMode()
 
 const testText = ref(t('settings.voice.testTextDefault'))
 const testPlaying = ref(false)
 
 const providerOptions = [
   { label: t('settings.voice.providerWebSpeech'), value: 'webspeech' },
-  { label: t('settings.voice.providerOpenai'), value: 'openai' },
-  { label: t('settings.voice.providerCustom'), value: 'custom' },
+  ...(!jellyManagedMode ? [
+    { label: t('settings.voice.providerOpenai'), value: 'openai' },
+    { label: t('settings.voice.providerCustom'), value: 'custom' },
+  ] : []),
   { label: t('settings.voice.providerEdge'), value: 'edge' },
-  { label: t('settings.voice.providerMimo'), value: 'mimo' },
+  ...(!jellyManagedMode ? [{ label: t('settings.voice.providerMimo'), value: 'mimo' }] : []),
 ]
 
 const openaiModelOptions = [

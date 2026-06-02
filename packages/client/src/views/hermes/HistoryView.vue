@@ -13,8 +13,10 @@ import HistoryMessageList from '@/components/hermes/chat/HistoryMessageList.vue'
 import SessionListItem from '@/components/hermes/chat/SessionListItem.vue'
 import OutlinePanel from '@/components/hermes/chat/OutlinePanel.vue'
 import { batchDeleteSessions, deleteSession, fetchHermesSessions, fetchHermesSession, importHermesSession, type SessionSummary } from '@/api/hermes/sessions'
+import { isJellyManagedMode } from '@/config/jellyai'
 
 const appStore = useAppStore()
+const jellyManagedMode = isJellyManagedMode()
 const profilesStore = useProfilesStore()
 const sessionBrowserPrefsStore = useSessionBrowserPrefsStore()
 const message = useMessage()
@@ -120,7 +122,7 @@ async function loadHistorySession(sessionId: string, profile?: string | null) {
     source: sessionDetail.source,
     createdAt: sessionDetail.started_at * 1000,
     updatedAt: (sessionDetail.last_active || sessionDetail.started_at) * 1000,
-    model: sessionDetail.model,
+    model: jellyManagedMode ? undefined : sessionDetail.model,
     messageCount: sessionDetail.message_count,
     inputTokens: sessionDetail.input_tokens,
     outputTokens: sessionDetail.output_tokens,
@@ -265,8 +267,8 @@ function sessionSummaryToSession(summary: SessionSummary): Session {
     source: summary.source,
     createdAt: summary.started_at * 1000,
     updatedAt: (summary.last_active || summary.started_at) * 1000,
-    model: summary.model,
-    provider: summary.provider,
+    model: jellyManagedMode ? undefined : summary.model,
+    provider: jellyManagedMode ? undefined : summary.provider,
     messageCount: summary.message_count,
     inputTokens: summary.input_tokens,
     outputTokens: summary.output_tokens,

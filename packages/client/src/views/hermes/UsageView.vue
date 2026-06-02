@@ -7,10 +7,12 @@ import { useProfilesStore } from '@/stores/hermes/profiles'
 import StatCards from '@/components/hermes/usage/StatCards.vue'
 import ModelBreakdown from '@/components/hermes/usage/ModelBreakdown.vue'
 import DailyTrend from '@/components/hermes/usage/DailyTrend.vue'
+import { isJellyManagedMode } from '@/config/jellyai'
 
 const { t } = useI18n()
 const usageStore = useUsageStore()
 const profilesStore = useProfilesStore()
+const jellyManagedMode = isJellyManagedMode()
 
 const periodOptions = [
   { label: '7d', days: 7 },
@@ -71,7 +73,7 @@ onMounted(() => {
 
       <template v-else-if="usageStore.hasData">
         <StatCards />
-        <ModelBreakdown />
+        <ModelBreakdown v-if="!jellyManagedMode" />
         <DailyTrend />
       </template>
 

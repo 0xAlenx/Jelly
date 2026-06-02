@@ -20,6 +20,7 @@ import {
 } from '../db/hermes/users-store'
 import { issueUserJwt } from '../middleware/user-auth'
 import { listProfileNamesFromDisk } from '../services/hermes/hermes-profile'
+import { isJellyManagedMode } from '../services/jellyai/managed-mode'
 
 /**
  * GET /api/auth/status
@@ -27,7 +28,7 @@ import { listProfileNamesFromDisk } from '../services/hermes/hermes-profile'
  */
 export async function authStatus(ctx: Context) {
   ctx.body = {
-    hasPasswordLogin: true,
+    hasPasswordLogin: !isJellyManagedMode(),
     hasUsers: countUsers() > 0,
   }
 }
@@ -64,6 +65,15 @@ export async function currentUser(ctx: Context) {
  * Returns a user-scoped JWT on success.
  */
 export async function login(ctx: Context) {
+  if (isJellyManagedMode()) {
+    ctx.status = 403
+    ctx.body = {
+      code: 'JELLY_LICENSE_REQUIRED',
+      error: 'Password login is disabled. Use a JellyAI license key.',
+    }
+    return
+  }
+
   const { username, password } = ctx.request.body as { username?: string; password?: string }
   if (!username || !password) {
     ctx.status = 400

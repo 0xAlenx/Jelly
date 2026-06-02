@@ -9,11 +9,13 @@ import { NButton, NTooltip, NSwitch, NModal, NInputNumber, useMessage } from 'na
 import { computed, ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToolTraceVisibility } from '@/composables/useToolTraceVisibility'
+import { isJellyManagedMode } from '@/config/jellyai'
 
 const chatStore = useChatStore()
 const { t } = useI18n()
 const message = useMessage()
 const { toolTraceVisible, toggleToolTraceVisible } = useToolTraceVisibility()
+const jellyManagedMode = isJellyManagedMode()
 const inputText = ref('')
 const textareaRef = ref<HTMLTextAreaElement>()
 const commandDropdownRef = ref<HTMLDivElement>()
@@ -189,6 +191,10 @@ async function saveContextLimit() {
 }
 
 async function loadContextLength() {
+  if (jellyManagedMode) {
+    contextLength.value = FALLBACK_CONTEXT
+    return
+  }
   try {
     const activeSession = chatStore.activeSession
     const profile = activeSession?.profile || useProfilesStore().activeProfileName || undefined
@@ -471,7 +477,7 @@ function isImage(type: string): boolean {
 
       <span v-if="totalTokens > 0" class="context-info" :class="{ 'context-warning': usagePercent > 80 }">
         {{ formatTokens(totalTokens) }} /
-        <NTooltip trigger="hover">
+        <NTooltip v-if="!jellyManagedMode" trigger="hover">
           <template #trigger>
             <span class="context-limit-editable" @click="handleEditContextLimit">
               {{ formatTokens(contextLength) }}
@@ -479,6 +485,7 @@ function isImage(type: string): boolean {
           </template>
           <span>{{ t('chat.contextClickToEdit') }}</span>
         </NTooltip>
+        <span v-else>{{ formatTokens(contextLength) }}</span>
         · {{ t('chat.contextRemaining') }} {{ formatTokens(remainingTokens) }}
       </span>
       <div v-if="totalTokens > 0" class="context-bar">
@@ -592,6 +599,7 @@ function isImage(type: string): boolean {
 
     <!-- Context Length Edit Modal -->
     <NModal
+      v-if="!jellyManagedMode"
       v-model:show="showContextEditModal"
       :title="t('chat.contextEditTitle')"
       :mask-closable="true"

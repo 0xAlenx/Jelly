@@ -5,8 +5,9 @@ import { promisify } from 'util'
 import { stripLegacyApiServerGatewayConfig } from '../config-helpers'
 import { logger } from '../logger'
 import { safeFileStore } from '../safe-file-store'
+import { isJellyManagedMode } from '../jellyai/managed-mode'
 import { getProfileDir, listProfileNamesFromDisk } from './hermes-profile'
-import { startGatewayRunManaged } from './gateway-runner'
+import { buildGatewayRunEnv, startGatewayRunManaged } from './gateway-runner'
 import { parseGatewayStatusesFromProfileList } from './profile-list-parser'
 
 const execFileAsync = promisify(execFile)
@@ -49,14 +50,16 @@ function envFlagEnabled(name: string): boolean {
 }
 
 export function shouldUseManagedGatewayRun(): boolean {
-  return envFlagEnabled('HERMES_WEB_UI_MANAGED_GATEWAY') ||
+  return isJellyManagedMode() ||
+    envFlagEnabled('HERMES_WEB_UI_MANAGED_GATEWAY') ||
     isDockerRuntime() ||
     isTermuxRuntime() ||
     process.platform === 'win32'
 }
 
 export function shouldUseManagedGatewayRunForAutostart(): boolean {
-  return envFlagEnabled('HERMES_WEB_UI_MANAGED_GATEWAY') ||
+  return isJellyManagedMode() ||
+    envFlagEnabled('HERMES_WEB_UI_MANAGED_GATEWAY') ||
     isDockerRuntime() ||
     isTermuxRuntime()
 }
@@ -135,10 +138,7 @@ export async function isGatewayRunningForProfile(hermesBin: string, profileDir: 
     const { stdout, stderr } = await execFileAsync(hermesBin, ['gateway', 'status'], {
       timeout: 10000,
       windowsHide: true,
-      env: {
-        ...process.env,
-        HERMES_HOME: profileDir,
-      },
+      env: buildGatewayRunEnv(profileDir),
     })
     return gatewayStatusLooksRunning(`${stdout}\n${stderr}`)
   } catch (err: any) {
@@ -173,10 +173,7 @@ async function stopGatewayForProfile(hermesBin: string, profile: string, profile
     await execFileAsync(hermesBin, ['gateway', 'stop'], {
       timeout: 30000,
       windowsHide: true,
-      env: {
-        ...process.env,
-        HERMES_HOME: profileDir,
-      },
+      env: buildGatewayRunEnv(profileDir),
     })
     logger.info('[gateway-autostart] gateway stopped profile=%s home=%s', profile, profileDir)
   } catch (err) {
@@ -205,10 +202,7 @@ export async function startGatewayForProfile(
     await execFileAsync(hermesBin, ['gateway', 'start'], {
       timeout: 30000,
       windowsHide: true,
-      env: {
-        ...process.env,
-        HERMES_HOME: profileDir,
-      },
+      env: buildGatewayRunEnv(profileDir),
     })
     logger.info('[gateway-autostart] gateway started via Hermes CLI service profile=%s home=%s', profile, profileDir)
   } catch (err) {
@@ -263,6 +257,7 @@ export async function clearApiServerForProfile(profileDir: string): Promise<void
 export async function ensureProfileGatewaysRunning(): Promise<void> {
   const hermesBin = resolveHermesBin()
   const profiles = listProfileNamesFromDisk()
+  const jellyManaged = isJellyManagedMode()
   let gatewayStatuses: Map<string, string> | undefined
   try {
     gatewayStatuses = await listGatewayStatusesFromProfileList(hermesBin)
@@ -281,11 +276,15 @@ export async function ensureProfileGatewaysRunning(): Promise<void> {
     const running = status !== undefined && gatewayStatusLooksRunning(status)
       ? true
       : await isGatewayRunningForProfile(hermesBin, profileDir)
-    if (running) {
+    if (running && !jellyManaged) {
       logger.info('[gateway-autostart] gateway already running profile=%s home=%s status=%s', profile, profileDir, status || 'status-check')
       continue
     }
 
+    if (running) {
+      logger.info('[gateway-autostart] restarting gateway with JellyAI channel proxy profile=%s home=%s', profile, profileDir)
+      await stopGatewayForProfile(hermesBin, profile, profileDir)
+    }
     await clearApiServerForProfile(profileDir)
     await startGatewayForProfile(hermesBin, profile, profileDir, { managedRun: shouldUseManagedGatewayRunForAutostart() })
     const ready = await waitForGatewayRunning(hermesBin, profile, profileDir)

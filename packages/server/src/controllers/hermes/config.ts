@@ -5,12 +5,33 @@ import { restartGatewayForProfile } from '../../services/hermes/gateway-autostar
 import { saveEnvValueForProfile } from '../../services/config-helpers'
 import { logger } from '../../services/logger'
 import { safeFileStore } from '../../services/safe-file-store'
+import { isJellyManagedMode } from '../../services/jellyai/managed-mode'
 
 const PLATFORM_SECTIONS = new Set([
   'telegram', 'discord', 'slack', 'whatsapp', 'matrix',
   'weixin', 'wecom', 'feishu', 'dingtalk', 'qqbot',
   'approvals',
 ])
+
+const MANAGED_HIDDEN_CONFIG_KEYS = new Set([
+  'api_key',
+  'base_url',
+  'custom_providers',
+  'default_model',
+  'default_provider',
+  'model',
+  'model_provider',
+  'models',
+  'provider',
+  'providers',
+])
+
+function sanitizeManagedConfig(config: Record<string, any>): Record<string, any> {
+  if (!isJellyManagedMode()) return config
+  const safe = { ...config }
+  for (const key of MANAGED_HIDDEN_CONFIG_KEYS) delete safe[key]
+  return safe
+}
 
 function requestedProfile(ctx: any): string {
   return ctx.state?.profile?.name || getActiveProfileName() || 'default'
@@ -108,7 +129,7 @@ async function readConfig(profile: string): Promise<Record<string, any>> {
 export async function getConfig(ctx: any) {
   try {
     const profile = requestedProfile(ctx)
-    const config = await readConfig(profile)
+    const config = sanitizeManagedConfig(await readConfig(profile))
     const envPlatforms = await readEnvPlatforms(profile)
     if (Object.keys(envPlatforms).length > 0) {
       const existing = config.platforms || {}

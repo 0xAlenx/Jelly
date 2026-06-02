@@ -23,6 +23,7 @@ import { logger } from '../../services/logger'
 import type { ConversationSummary } from '../../services/hermes/conversations'
 import { listUserProfiles } from '../../db/hermes/users-store'
 import { readConfigYamlForProfile } from '../../services/config-helpers'
+import { isJellyManagedMode } from '../../services/jellyai/managed-mode'
 
 function getPendingDeletedSessionIds(): Set<string> {
   return getGroupChatServer()?.getStorage().getPendingDeletedSessionIds() || new Set<string>()
@@ -36,6 +37,19 @@ function filterPendingDeletedSessions<T extends { id: string }>(items: T[]): T[]
 
 function filterPendingDeletedConversationSummaries(items: ConversationSummary[]): ConversationSummary[] {
   return filterPendingDeletedSessions(items)
+}
+
+function sanitizeManagedSession<T>(session: T): T {
+  if (!isJellyManagedMode() || !session || typeof session !== 'object') return session
+  const safe = { ...(session as Record<string, unknown>) }
+  delete safe.model
+  delete safe.provider
+  delete safe.billing_provider
+  return safe as T
+}
+
+function sanitizeManagedSessions<T>(sessions: T[]): T[] {
+  return sessions.map(sanitizeManagedSession)
 }
 
 function requestedProfile(ctx: any): string | undefined {
@@ -275,7 +289,7 @@ export async function listConversations(ctx: any) {
     is_active: s.ended_at == null && (Date.now() / 1000 - s.last_active) <= 300,
     thread_session_count: 1,
   }))
-  ctx.body = { sessions: filterPendingDeletedConversationSummaries(filterByAllowedProfiles(ctx, summaries)) }
+  ctx.body = { sessions: sanitizeManagedSessions(filterPendingDeletedConversationSummaries(filterByAllowedProfiles(ctx, summaries))) }
 }
 
 export async function getConversationMessages(ctx: any) {
@@ -318,10 +332,10 @@ export async function list(ctx: any) {
   const allSessions = localListSessions(profile, source, effectiveLimit)
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
   ctx.body = {
-    sessions: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s =>
+    sessions: sanitizeManagedSessions(filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s =>
       (s.source === 'api_server' || s.source === 'cli') &&
       (!knownProfiles || knownProfiles.has(s.profile || 'default')),
-    )),
+    ))),
   }
 }
 
@@ -341,7 +355,7 @@ export async function listHermesSessions(ctx: any) {
       ...(profile ? { ...session, profile } : session),
       webui_imported: importedIds.has(session.id),
     }))
-  ctx.body = { sessions: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s => s.source !== 'api_server')) }
+  ctx.body = { sessions: sanitizeManagedSessions(filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s => s.source !== 'api_server'))) }
 }
 
 export async function search(ctx: any) {
@@ -351,9 +365,9 @@ export async function search(ctx: any) {
   const results = localSearchSessions(profile, q, limit && limit > 0 ? limit : 20)
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
   ctx.body = {
-    results: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, results).filter(s =>
+    results: sanitizeManagedSessions(filterPendingDeletedSessions(filterByAllowedProfiles(ctx, results).filter(s =>
       !knownProfiles || knownProfiles.has(s.profile || 'default'),
-    )),
+    ))),
   }
 }
 
@@ -365,7 +379,7 @@ export async function get(ctx: any) {
     return
   }
   if (denySessionAccess(ctx, session)) return
-  ctx.body = { session }
+  ctx.body = { session: sanitizeManagedSession(session) }
 }
 
 /**
@@ -382,7 +396,7 @@ export async function getHermesSession(ctx: any) {
   const localSessionProfile = (localSession?.profile || 'default') as string
   if (localSession && localSession.source !== 'api_server' && (!profile || localSessionProfile === profile)) {
     if (denySessionAccess(ctx, localSession)) return
-    ctx.body = { session: localSession }
+    ctx.body = { session: sanitizeManagedSession(localSession) }
     return
   }
 
@@ -394,7 +408,7 @@ export async function getHermesSession(ctx: any) {
     if (session && session.source !== 'api_server') {
       const sessionWithProfile = profile ? { ...session, profile } : session
       if (denySessionAccess(ctx, sessionWithProfile)) return
-      ctx.body = { session: sessionWithProfile }
+      ctx.body = { session: sanitizeManagedSession(sessionWithProfile) }
       return
     }
   } catch (err) {
@@ -415,7 +429,7 @@ export async function getHermesSession(ctx: any) {
     return
   }
   if (denySessionAccess(ctx, session)) return
-  ctx.body = { session }
+  ctx.body = { session: sanitizeManagedSession(session) }
 }
 
 export async function importHermesSession(ctx: any) {
@@ -429,7 +443,7 @@ export async function importHermesSession(ctx: any) {
 
   const existing = localGetSessionDetail(sessionId)
   if (existing) {
-    ctx.body = { ok: true, imported: false, session: existing }
+    ctx.body = { ok: true, imported: false, session: sanitizeManagedSession(existing) }
     return
   }
 
@@ -503,7 +517,7 @@ export async function importHermesSession(ctx: any) {
     ended_at: detail.ended_at,
   })
 
-  ctx.body = { ok: true, imported: true, session: localGetSessionDetail(detail.id) }
+  ctx.body = { ok: true, imported: true, session: sanitizeManagedSession(localGetSessionDetail(detail.id)) }
 }
 
 export async function remove(ctx: any) {
@@ -744,7 +758,9 @@ export async function usageStats(ctx: any) {
     total_cost: hermes.cost,
     total_api_calls: hermes.total_api_calls,
     period_days: days,
-    model_usage: hermes.by_model.sort((a, b) => (b.input_tokens + b.output_tokens) - (a.input_tokens + a.output_tokens)),
+    model_usage: isJellyManagedMode()
+      ? []
+      : hermes.by_model.sort((a, b) => (b.input_tokens + b.output_tokens) - (a.input_tokens + a.output_tokens)),
     daily_usage: [...dayMap.values()],
   }
 }
@@ -887,7 +903,7 @@ export async function getConversationMessagesPaginated(ctx: any) {
     session: {
       id: result.session.id,
       source: result.session.source,
-      model: result.session.model,
+      ...(!isJellyManagedMode() ? { model: result.session.model } : {}),
       title: result.session.title,
       started_at: result.session.started_at,
       ended_at: result.session.ended_at,

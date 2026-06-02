@@ -20,6 +20,7 @@ import UserManagementSettings from "@/components/hermes/settings/UserManagementS
 import VoiceSettings from "@/components/hermes/settings/VoiceSettings.vue";
 import { isStoredSuperAdmin } from "@/api/client";
 import { useProfilesStore } from "@/stores/hermes/profiles";
+import { isJellyManagedMode } from "@/config/jellyai";
 
 const settingsStore = useSettingsStore();
 const profilesStore = useProfilesStore();
@@ -27,6 +28,7 @@ const { t } = useI18n();
 const canManageUsers = isStoredSuperAdmin();
 const route = useRoute();
 const router = useRouter();
+const jellyManagedMode = isJellyManagedMode();
 const activeTab = ref("account");
 
 const validTabs = computed(() => new Set([
@@ -38,7 +40,7 @@ const validTabs = computed(() => new Set([
   "compression",
   "session",
   "privacy",
-  "models",
+  ...(!jellyManagedMode ? ["models"] : []),
   "voice",
 ]));
 
@@ -110,7 +112,7 @@ onMounted(() => {
           <NTabPane name="privacy" :tab="t('settings.tabs.privacy')">
             <PrivacySettings />
           </NTabPane>
-          <NTabPane name="models" :tab="t('settings.tabs.models')">
+          <NTabPane v-if="!jellyManagedMode" name="models" :tab="t('settings.tabs.models')">
             <ModelSettings />
           </NTabPane>
           <NTabPane name="voice" :tab="t('settings.tabs.voice')">

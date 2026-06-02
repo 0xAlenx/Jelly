@@ -16,6 +16,7 @@ import {
   type ModelVisibilityRule,
 } from '@/api/hermes/system'
 import { hasApiKey } from '@/api/client'
+import { isJellyManagedMode } from '@/config/jellyai'
 
 const WEB_UI_VERSION = __APP_VERSION__
 
@@ -24,6 +25,7 @@ const ACTIVE_PROFILE_STORAGE_KEY = 'hermes_active_profile_name'
 const MODELS_CACHE_TTL_MS = 30000
 
 export const useAppStore = defineStore('app', () => {
+  const jellyManagedMode = isJellyManagedMode()
   const sidebarOpen = ref(false)
   // Desktop-only collapsed state (icon-rail mode). Persisted to localStorage.
   const sidebarCollapsed = ref(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1')
@@ -74,8 +76,8 @@ export const useAppStore = defineStore('app', () => {
       connected.value = res.status === 'ok'
       if (res.webui_version) serverVersion.value = res.webui_version
       clientOutdated.value = !!res.webui_version && res.webui_version !== WEB_UI_VERSION
-      if (res.webui_latest) latestVersion.value = res.webui_latest
-      updateAvailable.value = !!res.webui_update_available
+      if (!jellyManagedMode && res.webui_latest) latestVersion.value = res.webui_latest
+      updateAvailable.value = !jellyManagedMode && !!res.webui_update_available
       if (res.node_version) nodeVersion.value = res.node_version
     } catch {
       connected.value = false
@@ -145,6 +147,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   async function loadModels(force = false) {
+    if (jellyManagedMode) return
     if (!hasApiKey()) return
     if (!force && modelsLoadPromise) return modelsLoadPromise
     if (!force && modelsLastRequestedAt > 0 && Date.now() - modelsLastRequestedAt < MODELS_CACHE_TTL_MS) return

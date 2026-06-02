@@ -1,0 +1,59 @@
+import { isJellyManagedMode } from './managed-mode'
+
+const MODEL_PROVIDER_ENV_KEYS = new Set([
+  'AI_GATEWAY_API_KEY',
+  'AI_GATEWAY_BASE_URL',
+  'ALIBABA_CODING_PLAN_API_KEY',
+  'ALIBABA_CODING_PLAN_BASE_URL',
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_BASE_URL',
+  'ARCEE_API_KEY',
+  'ARCEE_BASE_URL',
+  'COPILOT_GITHUB_TOKEN',
+  'DASHSCOPE_API_KEY',
+  'DASHSCOPE_BASE_URL',
+  'DEEPSEEK_API_KEY',
+  'DEEPSEEK_BASE_URL',
+  'GEMINI_API_KEY',
+  'GEMINI_BASE_URL',
+  'GLM_API_KEY',
+  'GLM_BASE_URL',
+  'HF_BASE_URL',
+  'HF_TOKEN',
+  'KILO_API_KEY',
+  'KILOCODE_BASE_URL',
+  'KIMI_BASE_URL',
+  'KIMI_CN_API_KEY',
+  'LM_API_KEY',
+  'LM_BASE_URL',
+  'LONGCAT_API_KEY',
+  'LONGCAT_BASE_URL',
+  'MINIMAX_API_KEY',
+  'MINIMAX_BASE_URL',
+  'MINIMAX_CN_API_KEY',
+  'MINIMAX_CN_BASE_URL',
+  'MOONSHOT_API_KEY',
+  'OLLAMA_API_KEY',
+  'OLLAMA_BASE_URL',
+  'OPENCODE_GO_API_KEY',
+  'OPENCODE_GO_BASE_URL',
+  'OPENCODE_ZEN_API_KEY',
+  'OPENCODE_ZEN_BASE_URL',
+  'OPENAI_API_KEY',
+  'OPENAI_BASE_URL',
+  'OPENROUTER_API_KEY',
+  'OPENROUTER_BASE_URL',
+  'STEPFUN_API_KEY',
+  'STEPFUN_BASE_URL',
+  'XAI_API_KEY',
+  'XAI_BASE_URL',
+  'XIAOMI_API_KEY',
+  'XIAOMI_BASE_URL',
+])
+
+export function managedChildProcessEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  if (!isJellyManagedMode()) return { ...source }
+  const safe = { ...source }
+  for (const key of MODEL_PROVIDER_ENV_KEYS) delete safe[key]
+  return safe
+}

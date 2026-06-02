@@ -5,8 +5,9 @@ import { promisify } from 'util'
 import YAML from 'js-yaml'
 import { logger } from '../logger'
 import { stripLegacyApiServerGatewayConfig, updateConfigYaml } from '../config-helpers'
+import { isJellyManagedMode } from '../jellyai/managed-mode'
 import { getActiveProfileDir, getActiveProfileName, getProfileDir, listProfileNamesFromDisk } from './hermes-profile'
-import { startGatewayRunManaged } from './gateway-runner'
+import { buildGatewayRunEnv, startGatewayRunManaged } from './gateway-runner'
 import { isGatewayRunningForProfile } from './gateway-autostart'
 import { parseProfileListRuntimeInfo, type ProfileListRuntimeInfo } from './profile-list-parser'
 
@@ -158,12 +159,10 @@ async function waitForGatewayLockReleasedAfterStop(profileDir: string, timeoutMs
 }
 
 function activeGatewayExecOpts() {
+  const profileDir = getActiveProfileDir()
   return {
     ...execOpts,
-    env: {
-      ...process.env,
-      HERMES_HOME: getActiveProfileDir(),
-    },
+    env: buildGatewayRunEnv(profileDir),
   }
 }
 
@@ -428,6 +427,11 @@ export async function getVersion(): Promise<string> {
  * Start Hermes gateway (uses launchd/systemd)
  */
 export async function startGateway(): Promise<string> {
+  if (isJellyManagedMode()) {
+    const result = startGatewayRunManaged(HERMES_BIN, { profileDir: getActiveProfileDir() })
+    return result.pid ? `Gateway started (PID: ${result.pid})` : 'Gateway start triggered'
+  }
+
   if (isDocker) {
     const pid = await startGatewayBackground()
     return pid ? `Gateway started (PID: ${pid})` : 'Gateway start triggered'
@@ -449,10 +453,7 @@ export async function startGatewayBackground(): Promise<number | null> {
     detached: true,
     stdio: 'ignore',
     windowsHide: true,
-    env: {
-      ...process.env,
-      HERMES_HOME: getActiveProfileDir(),
-    },
+    env: buildGatewayRunEnv(getActiveProfileDir()),
   })
   child.unref()
   return child.pid ?? null
@@ -465,7 +466,7 @@ export async function startGatewayBackground(): Promise<number | null> {
 export async function restartGateway(): Promise<string> {
   await clearLegacyApiServerGatewayConfig()
   const profileDir = getActiveProfileDir()
-  if (isDocker || isTermux || process.platform === 'win32') {
+  if (isJellyManagedMode() || isDocker || isTermux || process.platform === 'win32') {
     await stopGatewayForActiveProfile()
     const lockReleased = await waitForGatewayLockReleasedAfterStop(profileDir)
     if (!lockReleased) throw new Error('Gateway stopped but runtime lock is still held by another process')

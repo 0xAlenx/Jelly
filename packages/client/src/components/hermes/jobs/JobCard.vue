@@ -5,6 +5,7 @@ import type { Job } from '@/api/hermes/jobs'
 import { scheduleToDisplayText } from '@/api/hermes/jobs'
 import { useJobsStore } from '@/stores/hermes/jobs'
 import { useI18n } from 'vue-i18n'
+import { isJellyManagedMode } from '@/config/jellyai'
 
 const props = defineProps<{
   job: Job
@@ -19,6 +20,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const jobsStore = useJobsStore()
 const message = useMessage()
+const jellyManagedMode = isJellyManagedMode()
 
 const jobId = computed(() => props.job.job_id || props.job.id)
 
@@ -98,7 +100,7 @@ function handleCardClick(e: MouseEvent) {
         <span class="info-label">{{ t('jobs.info.schedule') }}</span>
         <code class="info-value mono">{{ scheduleExpr }}</code>
       </div>
-      <div class="info-row">
+      <div v-if="!jellyManagedMode" class="info-row">
         <span class="info-label">{{ t('jobs.info.model') }}</span>
         <span class="info-value mono">{{ job.model || '—' }}</span>
       </div>

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import * as hermesCli from '../services/hermes/hermes-cli'
+import { isJellyManagedMode } from '../services/jellyai/managed-mode'
 
 declare const __APP_VERSION__: string
 
@@ -46,6 +47,8 @@ const LOCAL_VERSION = typeof __APP_VERSION__ !== 'undefined'
 let cachedLatestVersion = ''
 
 export async function checkLatestVersion(): Promise<void> {
+  if (isJellyManagedMode()) return
+
   try {
     const packageName = PACKAGE_INFO?.name || 'hermes-web-ui'
     const registryName = encodeURIComponent(packageName)
@@ -61,6 +64,8 @@ export async function checkLatestVersion(): Promise<void> {
 }
 
 export function startVersionCheck(): void {
+  if (isJellyManagedMode()) return
+
   setTimeout(checkLatestVersion, 5000)
   setInterval(checkLatestVersion, 30 * 60 * 1000)
 }
@@ -68,14 +73,17 @@ export function startVersionCheck(): void {
 export async function healthCheck(ctx: any) {
   const raw = await hermesCli.getVersion()
   const hermesVersion = raw.split('\n')[0].replace('Hermes Agent ', '') || ''
+  const managedMode = isJellyManagedMode()
   ctx.body = {
     status: 'ok',
     platform: 'hermes-agent',
     version: hermesVersion,
     gateway: 'running',
     webui_version: LOCAL_VERSION,
-    webui_latest: cachedLatestVersion,
-    webui_update_available: Boolean(LOCAL_VERSION && cachedLatestVersion && cachedLatestVersion !== LOCAL_VERSION),
+    webui_latest: managedMode ? '' : cachedLatestVersion,
+    webui_update_available: managedMode
+      ? false
+      : Boolean(LOCAL_VERSION && cachedLatestVersion && cachedLatestVersion !== LOCAL_VERSION),
     node_version: process.versions.node,
   }
 }

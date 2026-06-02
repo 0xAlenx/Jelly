@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { hasApiKey, isStoredSuperAdmin } from '@/api/client'
+import { isJellyManagedMode } from '@/config/jellyai'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -121,6 +122,11 @@ const router = createRouter({
 })
 
 router.beforeEach((to, _from, next) => {
+  if (isJellyManagedMode() && to.name === 'hermes.models') {
+    next({ name: 'hermes.chat' })
+    return
+  }
+
   // Public pages don't need auth
   if (to.meta.public) {
     // Already has key, skip login

@@ -1,4 +1,5 @@
 import { ref, watch } from 'vue'
+import { isJellyManagedMode } from '@/config/jellyai'
 
 export type TtsProvider = 'webspeech' | 'openai' | 'custom' | 'edge' | 'mimo'
 
@@ -85,17 +86,33 @@ const DEFAULT: VoiceSettingsData = {
 }
 
 function sanitize(data: VoiceSettingsData): VoiceSettingsData {
+  const sanitized = { ...data }
   // Clear old Edge TTS adapter URLs — now uses internal node-edge-tts
-  if (data.edgeUrl && data.edgeUrl !== '') {
-    data.edgeUrl = ''
+  if (sanitized.edgeUrl && sanitized.edgeUrl !== '') {
+    sanitized.edgeUrl = ''
   }
-  return data
+  if (isJellyManagedMode()) {
+    if (sanitized.provider !== 'webspeech' && sanitized.provider !== 'edge') {
+      sanitized.provider = 'webspeech'
+    }
+    sanitized.openaiApiKey = ''
+    sanitized.openaiBaseUrl = ''
+    sanitized.customUrl = ''
+    sanitized.customApiKey = ''
+    sanitized.mimoApiKey = ''
+    sanitized.mimoBaseUrl = ''
+  }
+  return sanitized
 }
 
 function load(): VoiceSettingsData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return sanitize({ ...DEFAULT, ...JSON.parse(raw) })
+    if (raw) {
+      const settings = sanitize({ ...DEFAULT, ...JSON.parse(raw) })
+      if (isJellyManagedMode()) localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+      return settings
+    }
   } catch { /* ignore */ }
   return { ...DEFAULT }
 }
@@ -183,7 +200,9 @@ export function useVoiceSettings() {
     mimoVoiceDesignDesc,
     mimoStylePrompt,
 
-    setProvider(v: TtsProvider) { provider.value = v },
+    setProvider(v: TtsProvider) {
+      provider.value = isJellyManagedMode() && v !== 'webspeech' && v !== 'edge' ? 'webspeech' : v
+    },
     setWebSpeechVoice(v: string) { webspeechVoice.value = v },
     setOpenaiApiKey(v: string) { openaiApiKey.value = v },
     setOpenaiBaseUrl(v: string) { openaiBaseUrl.value = v },
