@@ -199,5 +199,41 @@
     "helper": "ceil_to_1_decimal",
     "input": 6.0,
     "expected": "6.0"
+  },
+  {
+    "name": "模板顺序校验 - 成本方案",
+    "type": "unit_helper",
+    "helper": "validate_rendered_plan_template",
+    "required_order": [
+      "来源报价表",
+      "工作簿",
+      "渠道",
+      "运输方式",
+      "起运仓",
+      "税务类型",
+      "计费方式",
+      "成本单价",
+      "参考时效",
+      "船期"
+    ]
+  },
+  {
+    "name": "模板顺序校验 - 最终报价",
+    "type": "unit_helper",
+    "helper": "validate_rendered_plan_template",
+    "required_order": [
+      "来源报价表",
+      "工作簿",
+      "渠道",
+      "运输方式",
+      "起运仓",
+      "税务类型",
+      "计费方式",
+      "成本单价",
+      "报价单价",
+      "预估总价",
+      "参考时效",
+      "船期"
+    ]
   }
 ]

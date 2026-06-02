@@ -1,5 +1,5 @@
 {
-  "version": "1.4",
+  "version": "1.5",
   "query_mode": "rest",
   "allow_excel_fallback": false,
   "remote_database_only": true,

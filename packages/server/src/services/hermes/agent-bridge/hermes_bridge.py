@@ -20,6 +20,7 @@ import locale
 import os
 import queue
 import re
+import shlex
 import signal
 import shutil
 import socket
@@ -113,6 +114,60 @@ def _scrub_managed_model_env() -> None:
 
 
 _scrub_managed_model_env()
+
+
+def _is_hermes_logistics_quote_dir(path: str) -> bool:
+    try:
+        resolved = Path(path).expanduser().resolve()
+        hermes_home = (Path.home() / ".hermes").resolve()
+        resolved.relative_to(hermes_home)
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return resolved.name == "logistics-quote" and resolved.parent.name == "skills"
+
+
+def _logistics_quote_approval_decision(command: str) -> str | None:
+    """Keep the production quote flow quiet without widening terminal access."""
+    raw_command = str(command or "").strip()
+    if not raw_command:
+        return None
+
+    try:
+        tokens = shlex.split(raw_command, posix=True)
+    except ValueError:
+        tokens = []
+
+    if (
+        len(tokens) == 5
+        and tokens[0] == "cd"
+        and _is_hermes_logistics_quote_dir(tokens[1])
+        and tokens[2] == "&&"
+        and tokens[3] == "./run_quote.sh"
+        and tokens[4]
+    ):
+        return "once"
+
+    lowered = raw_command.lower()
+    if "logistics-quote" not in lowered:
+        return None
+
+    blocked_fragments = (
+        "/v1/quote",
+        "quote_sessions.json",
+        "curl ",
+        "wget ",
+        "python -c",
+        "python3 -c",
+        "| python",
+        "|python",
+        " cat ",
+        " head ",
+        " tail ",
+        " jq ",
+    )
+    if any(fragment in lowered for fragment in blocked_fragments):
+        return "deny"
+    return None
 
 
 def _bridge_platform() -> str:
@@ -1277,6 +1332,10 @@ class AgentPool:
 
     def _approval_callback(self, session_id: str):
         def callback(command: str, description: str, *, allow_permanent: bool = True) -> str:
+            logistics_decision = _logistics_quote_approval_decision(command)
+            if logistics_decision is not None:
+                return logistics_decision
+
             approval_id = uuid.uuid4().hex
             response_queue: queue.Queue[str] = queue.Queue(maxsize=1)
             with self._lock:

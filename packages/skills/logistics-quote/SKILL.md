@@ -1,23 +1,35 @@
 ---
-name: logistics-quote
-description: Query the production remote logistics quotation database and run the two-stage freight quoting workflow for warehouse, FBA, transport, tax, cost, margin, and customer quote requests. Use when Hermes or JellyAI needs to answer logistics quotation inquiries, retrieve shipping cost options, calculate margin-adjusted quotes, inspect quotation task state, or check the remote quotation service.
+name: logistics-quote1.5
+version: 1.5
+chinese_name: 物流报价 Skill 1.5 正式版
+description: Official production logistics quotation Skill for OpenClaw + WeCom. v1.5 is remote-database-only, has no local Excel fallback, and supports production quotation workflow.
 ---
 
-# 物流报价 Skill 1.4 正式版
+# 物流报价 Skill 1.5 正式版
 
-Production version of the logistics quotation Skill for Hermes, JellyAI, and WeCom customer service quotation workflow.
+Production version of the logistics quotation Skill for OpenClaw + WeCom customer service quotation workflow.
 
-v1.4 is remote-database-only. It uses the remote quotation database REST service and does not include local Excel quotation files or local Excel fallback.
+v1.5 is remote-database-only. It uses the remote quotation database REST service and does not include local Excel quotation files or local Excel fallback.
 
-v1.4 adds multi-warehouse batch quotation support, single-warehouse full-option listing, per-warehouse best-cost / fastest-ETA batch summaries, preservation of concrete channel names, explicit-filter reasoning without over-filtering casual wording such as `发慢船`, and batch unified-margin calculation.
+v1.5 is an output-template stability release. It preserves the v1.4 quotation workflow, remote database query logic, pricing logic, and safety rules, while forcing all quote plan outputs through the canonical `render_plan()` renderer.
+
+v1.5 template-stability changes:
+
+- Added canonical `render_plan()`.
+- Routed single cost plans, batch cost plans, final quote plans, and customer-facing final quote plans through `render_plan()`.
+- Enforced strict cost-plan field order: `来源报价表 → 工作簿 → 渠道 → 运输方式 → 起运仓 → 税务类型 → 计费方式 → 成本单价 → 参考时效 → 船期 → 重量/体积/件数`.
+- Enforced strict final quote field order: `来源报价表 → 工作簿 → 渠道 → 运输方式 → 起运仓 → 税务类型 → 计费方式 → 成本单价 → 报价单价 → 数量 → 预估总价 → 参考时效 → 船期`.
+- Added display sanitization for embedded newlines.
+- Added `validate_rendered_plan_template()`.
+- OpenClaw must return stdout as-is without rewriting, summarizing, reordering, compressing, table-converting, or omitting quote fields.
 
 Folder name:
 
 ```text
-logistics-quote
+logistics-quote1.5
 ```
 
-## When Hermes Should Use This Skill
+## When OpenClaw Should Use This Skill
 
 Use this Skill when a WeCom / 企业微信 message is about any of the following:
 
@@ -33,15 +45,32 @@ Use this Skill when a WeCom / 企业微信 message is about any of the following
 - trucking / card delivery / 卡航 / 卡派
 - margin calculation / 毛利率计算 / 加点报价
 
-The Hermes bundled Skill folder name is:
+The OpenClaw production Skill folder name is:
 
 ```text
-logistics-quote
+logistics-quote1.5
 ```
 
-## How Hermes Should Execute
+## How OpenClaw Should Execute
 
 The working directory must be this Skill folder.
+
+### Mandatory Execution Contract
+
+For every logistics quotation message, execute exactly one quotation entrypoint command and return its stdout verbatim:
+
+```bash
+./run_quote.sh "<complete user message>"
+```
+
+The quotation script manages all task state internally. OpenClaw/LLM must not inspect, parse, summarize, edit, or pipe `quote_sessions.json` into another command. Do not use `cat`, `head`, `tail`, `jq`, `python -c`, `python3 -c`, shell pipes, or ad-hoc scripts to read quotation state. For task summaries and history, pass the supported command to the same entrypoint, for example:
+
+```bash
+./run_quote.sh "/当前任务"
+./run_quote.sh "/任务列表"
+```
+
+Do not call the remote REST endpoint directly with `curl`, `wget`, Python, or any other HTTP client. If `run_quote.sh` returns an error, return that output as-is. Do not construct an alternative terminal command.
 
 On Windows, call:
 
@@ -49,13 +78,13 @@ On Windows, call:
 run_quote.bat "<user message>"
 ```
 
-If the Hermes environment is Linux/macOS and cannot run `.bat`, call:
+If the OpenClaw environment is Linux/macOS and cannot run `.bat`, call:
 
 ```bash
-./run_quote.sh "<user message>"
+python quote_query.py "<user message>"
 ```
 
-`run_quote.sh` selects the Hermes Python environment when available:
+`run_quote.sh` is also provided for Linux/macOS local runs:
 
 ```bash
 ./run_quote.sh "<user message>"
@@ -63,13 +92,13 @@ If the Hermes environment is Linux/macOS and cannot run `.bat`, call:
 
 ## State
 
-All quotation states are stored in:
+All quotation states are stored internally by the quotation script in:
 
 ```text
 quote_sessions.json
 ```
 
-## v1.4 Remote Quote Layer
+## v1.5 Remote Quote Layer
 
 Default query mode:
 
@@ -112,7 +141,7 @@ This Skill is stateful:
 
 - This Skill uses REST query mode by default.
 - Current remote database reference: `docs/4.md`.
-- `docs/1.md`, `docs/2.md`, and `docs/3.md` are historical/obsolete for v1.4.
+- `docs/1.md`, `docs/2.md`, and `docs/3.md` are historical/obsolete for v1.5.
 - The database is region-aware. U.S. quotation data is located mainly by product/channel name plus FBA warehouse code; Europe/UK quotation data is located by `下单渠道` + `服务国家`.
 - U.S. displayed `渠道` should use product/channel name plus warehouse code. Europe/UK displayed `渠道` should use `下单渠道` + `服务国家`, with `子渠道` + `国家或分区` as fallback.
 - Europe warehouse codes may be embedded inside `服务国家` / `国家或分区`, such as `德国-DTM2`; the Skill must match requested Europe warehouse codes against those fields.
@@ -131,7 +160,8 @@ This Skill is stateful:
 - Preserve weight conditions such as `100KG以上`, `100KG+`, and `100KG起` in task state and output; send numeric weight to the backend when required.
 - Internal quotation output must prioritize traceability over brevity. Keep `来源报价表` and `工作簿` as separate fields, and build displayed `渠道` as a traceable path containing warehouse code, country/region, workbook, transport, tax type, delivery method, and weight tier when available.
 - If the backend returns `仓库名`, `邮编`, `原始行号`, `rate_line_id`, or `record_id`, show those optional trace fields after `渠道`.
-- MCP endpoint information is included in `quote_config.json` for future direct Hermes tool calling.
+- MCP registration information is included for future direct OpenClaw tool calling.
+- See `MCP_REGISTRATION.md`.
 - Do not confuse REST docs URL `http://43.156.235.189:8080/docs#/` with MCP endpoint `http://43.156.235.189:8090/mcp`.
 
 ## Primary Chinese Commands
@@ -171,7 +201,7 @@ When staff sends a customer inquiry, the Skill should:
 
 When staff provides a margin rate, for example `统一按15%`, the Skill should:
 
-1. Load the active task from `quote_sessions.json`.
+1. Pass the complete staff message to the quotation entrypoint. The script loads the active task internally.
 2. Apply margin rules to selected cost options.
 3. Calculate quote unit price and estimated total price when weight/volume is available.
 4. Generate a customer-facing Chinese reply.
@@ -186,7 +216,7 @@ Formula:
 
 - Do not invent prices.
 - Only return cost prices from the remote quotation database service.
-- Local Excel quotation files are not included in v1.4.
+- Local Excel quotation files are not included in v1.5.
 - There is no local Excel fallback. If the database cannot be queried safely, refuse quotation.
 - Do not calculate final quote before staff provides margin rate.
 - If no matched cost option is found, classify the reason:
@@ -233,7 +263,18 @@ For batch tasks:
 
 Normal output must use compact vertical cards.
 
-Cost option cards include:
+The script output is canonical. OpenClaw/LLM must return stdout exactly as produced by the script:
+
+- Do not summarize.
+- Do not rewrite.
+- Do not compress.
+- Do not change field order.
+- Do not omit fields.
+- Do not convert quote plans into tables.
+- Do not merge multiple plan fields into one line.
+- Do not replace missing fields with blanks; the renderer uses `未返回`.
+
+Every cost option plan must use this exact field order:
 
 ```text
 方案 1｜性价比最高
@@ -245,14 +286,16 @@ Cost option cards include:
 税务类型：
 计费方式：
 成本单价：
+参考时效：
+船期：
 重量：
 体积：
 件数：
-参考时效：
-船期：
 ```
 
-Final quote cards include:
+`重量` / `体积` / `件数` lines are shown only when involved or returned. The required source and cost fields are always shown; missing values display `未返回`.
+
+Every final quote plan must use this exact field order:
 
 ```text
 方案 1｜性价比最高
@@ -273,11 +316,13 @@ Final quote cards include:
 船期：
 ```
 
+Final quote plans must include both `成本单价` and `报价单价`. The quoted customer unit price keeps the existing `末位进一，保留1位小数` rule.
+
 Customer-facing quote should show at most 5 options.
 
 ## Local Data Files
 
-v1.4 does not package local Excel quotation files. The historical Excel-based version remains only in `logistics-quote1.0` for rollback/reference, not as a production fallback.
+v1.5 does not package local Excel quotation files. The historical Excel-based version remains only in `logistics-quote1.0` for rollback/reference, not as a production fallback.
 
 ## Channel Display Normalization
 
@@ -304,8 +349,8 @@ v1.4 does not package local Excel quotation files. The historical Excel-based ve
 - If the database is unavailable, times out, or returns invalid data, the Skill must refuse to quote.
 - Do not invent prices.
 - Do not use stale local files.
-- Hermes must return the script stdout verbatim.
-- Hermes must not summarize, rewrite, compress, reformat, or decorate quotation output.
+- OpenClaw must return the script stdout verbatim.
+- OpenClaw must not summarize, rewrite, compress, reformat, or decorate quotation output.
 - If output is long, still return the full script output.
 - Do not use emoji or compressed summaries in quotation output.
 

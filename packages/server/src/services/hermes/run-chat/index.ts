@@ -16,6 +16,8 @@ import { getActiveProfileName, getProfileDir, listProfileNamesFromDisk } from '.
 import { AgentBridgeClient } from '../agent-bridge'
 import { handleApiRun, resolveRunSource, loadSessionStateFromDb } from './handle-api-run'
 import { handleBridgeRun } from './handle-bridge-run'
+import { handleHostedLogisticsQuoteRun } from './handle-hosted-logistics-run'
+import { shouldRouteHostedLogisticsQuote } from './logistics-quote-routing'
 import { handleAbort } from './abort'
 import { getOrCreateSession } from './compression'
 import { handleSessionCommand, isSessionCommand, parseSessionCommand } from './session-command'
@@ -126,7 +128,7 @@ export class ChatRunSocket {
         const state = getOrCreateSession(this.sessionMap, data.session_id)
         const source = resolveRunSource(data.source, data.session_id)
         const command = parseSessionCommand(data.input)
-        if (command && source === 'cli') {
+        if (command && source === 'cli' && !shouldRouteHostedLogisticsQuote(data.input)) {
           try {
             await handleSessionCommand(data.session_id, command, {
               nsp: this.nsp,
@@ -199,6 +201,7 @@ export class ChatRunSocket {
 
     socket.on('cancel_queued_run', (data: { session_id?: string; queue_id?: string }) => {
       if (!data.session_id || !data.queue_id) return
+      if (socketUser && !this.canAccessSession(socketUser, data.session_id)) return
       const state = this.sessionMap.get(data.session_id)
       if (!state?.queue.length) return
       const before = state.queue.length
@@ -217,18 +220,23 @@ export class ChatRunSocket {
     socket.on('resume', async (data: { session_id?: string }) => {
       if (!data.session_id) return
       const sid = data.session_id
+      if (socketUser && !this.canAccessSession(socketUser, sid)) {
+        socket.emit('run.failed', { event: 'run.failed', session_id: sid, error: 'Session access denied' })
+        return
+      }
       socket.join(`session:${sid}`)
       this.resumeSession(socket, sid)
     })
 
     socket.on('abort', (data: { session_id?: string }) => {
-      if (data.session_id) {
+      if (data.session_id && (!socketUser || this.canAccessSession(socketUser, data.session_id))) {
         void handleAbort(this.nsp, socket, data.session_id, this.sessionMap, this.bridge, this.runQueuedItem.bind(this))
       }
     })
 
     socket.on('approval.respond', async (data: { session_id?: string; approval_id?: string; choice?: string }) => {
       if (!data.session_id || !data.approval_id) return
+      if (socketUser && !this.canAccessSession(socketUser, data.session_id)) return
       try {
         const result = await this.bridge.approvalRespond(data.approval_id, data.choice || 'deny')
         this.emitToSession(socket, data.session_id, 'approval.resolved', {
@@ -250,6 +258,7 @@ export class ChatRunSocket {
 
     socket.on('clarify.respond', async (data: { session_id?: string; clarify_id?: string; response?: string }) => {
       if (!data.session_id || !data.clarify_id) return
+      if (socketUser && !this.canAccessSession(socketUser, data.session_id)) return
       this.clearClarifyEventState(data.session_id, data.clarify_id)
       try {
         const result = await this.bridge.clarifyRespond(data.clarify_id, data.response || '')
@@ -291,6 +300,17 @@ export class ChatRunSocket {
     skipUserMessage = false,
   ) {
     const source = resolveRunSource(data.source, data.session_id)
+
+    if (await handleHostedLogisticsQuoteRun({
+      nsp: this.nsp,
+      socket,
+      data,
+      profile,
+      sessionMap: this.sessionMap,
+      skipUserMessage,
+      dequeueNextQueuedRun: this.dequeueNextQueuedRun.bind(this),
+    })) return
+
     if (data.session_id && source === 'cli' && isSessionCommand(data.input)) return
 
     if (source === 'cli') {
@@ -420,6 +440,11 @@ export class ChatRunSocket {
 
   private canAccessProfile(user: AuthenticatedUser, profile: string): boolean {
     return user.role === 'super_admin' || userCanAccessProfile(user.id, profile)
+  }
+
+  private canAccessSession(user: AuthenticatedUser, sessionId: string): boolean {
+    const session = getSession(sessionId)
+    return !session || this.canAccessProfile(user, session.profile || 'default')
   }
 
   /** Close all active upstream response streams */

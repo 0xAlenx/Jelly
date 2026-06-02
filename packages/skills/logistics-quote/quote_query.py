@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import sys
 from copy import deepcopy
@@ -139,7 +140,10 @@ def load_config() -> Dict[str, Any]:
 
 
 def session_path(config: Dict[str, Any]) -> Path:
-    return BASE_DIR / config.get("session_file", "quote_sessions.json")
+    configured = os.environ.get("LOGISTICS_QUOTE_SESSION_FILE", "").strip()
+    path = Path(configured) if configured else BASE_DIR / config.get("session_file", "quote_sessions.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def load_sessions(config: Dict[str, Any]) -> Dict[str, Any]:
@@ -181,6 +185,17 @@ def normalize_text(value: Any) -> str:
 
 def norm_for_match(value: Any) -> str:
     return normalize_text(value).lower()
+
+
+def compact_display_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and math.isnan(value):
+        return ""
+    text = str(value).strip()
+    text = re.sub(r"[\r\n\t]+", " ", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    return text.strip()
 
 
 def to_float(value: Any) -> Optional[float]:
@@ -306,20 +321,12 @@ def source_title(file_name: str) -> str:
 
 
 def show(value: Any) -> str:
-    if value is None:
-        return "未填写"
-    if isinstance(value, float) and math.isnan(value):
-        return "未填写"
-    text = str(value).strip()
+    text = compact_display_text(value)
     return text if text else "未填写"
 
 
 def show_returned(value: Any) -> str:
-    if value is None:
-        return "未返回"
-    if isinstance(value, float) and math.isnan(value):
-        return "未返回"
-    text = str(value).strip()
+    text = compact_display_text(value)
     return text if text else "未返回"
 
 
@@ -332,7 +339,7 @@ def first_display_value(record: Dict[str, Any], keys: List[str]) -> Any:
 
 
 def ship_schedule_display(value: Any) -> str:
-    text = str(value).strip() if value not in [None, ""] else ""
+    text = compact_display_text(value)
     return text or "未返回"
 
 
@@ -427,7 +434,7 @@ def trace_detail_lines(record: Dict[str, Any]) -> List[str]:
     return lines
 
 
-def quantity_detail_lines(record: Dict[str, Any]) -> List[str]:
+def quantity_detail_lines(record: Dict[str, Any], include_missing: bool = False) -> List[str]:
     lines: List[str] = []
     weight_display = first_display_value(record, ["batch_weight_display", "weight_display"])
     weight = first_display_value(record, ["batch_weight_kg", "weight_kg"])
@@ -437,17 +444,35 @@ def quantity_detail_lines(record: Dict[str, Any]) -> List[str]:
         lines.append(f"重量：{weight_display}")
     elif weight not in [None, ""]:
         lines.append(f"重量：{format_money(weight)} KG")
-    else:
+    elif include_missing:
         lines.append("重量：未返回")
     if volume not in [None, ""]:
         lines.append(f"体积：{format_money(volume)} CBM")
-    else:
+    elif include_missing:
         lines.append("体积：未返回")
     if pieces not in [None, ""]:
         lines.append(f"件数：{format_money(pieces)}")
-    else:
+    elif include_missing:
         lines.append("件数：未返回")
     return lines
+
+
+def quote_quantity_detail_lines(record: Dict[str, Any]) -> List[str]:
+    billing = normalize_text(record.get("billing_method")).lower()
+    has_weight = first_display_value(record, ["batch_weight_display", "weight_display", "batch_weight_kg", "weight_kg"]) not in [None, ""]
+    has_volume = first_display_value(record, ["batch_volume_cbm", "volume_cbm"]) not in [None, ""]
+    has_pieces = first_display_value(record, ["piece_count"]) not in [None, ""]
+    if "kg" in billing or "公斤" in billing:
+        return quantity_detail_lines(record, include_missing=True)[:1]
+    if "cbm" in billing or "方" in billing:
+        volume_lines = quantity_detail_lines(record, include_missing=True)
+        return [line for line in volume_lines if line.startswith("体积：")] or ["体积：未返回"]
+    if "件" in billing or "pcs" in billing:
+        piece_lines = quantity_detail_lines(record, include_missing=True)
+        return [line for line in piece_lines if line.startswith("件数：")] or ["件数：未返回"]
+    if has_weight or has_volume or has_pieces:
+        return quantity_detail_lines(record, include_missing=False)
+    return ["重量：未返回"]
 
 
 def option_detail_lines(record: Dict[str, Any], include_quote: bool = False) -> List[str]:
@@ -467,19 +492,149 @@ def option_detail_lines(record: Dict[str, Any], include_quote: bool = False) -> 
     ])
     if include_quote:
         lines.append(f"报价单价：{show_returned(customer_quote_line(record.get('currency', 'RMB'), record.get('final_unit_price'), record.get('price_unit'), record.get('billing_method')))}")
-    lines.extend(quantity_detail_lines(record))
-    if include_quote:
+        lines.extend(quote_quantity_detail_lines(record))
         total = record.get("estimated_total_display")
         if record.get("estimated_total") is not None:
             total = customer_total_line(record.get('currency', 'RMB'), record.get('estimated_total'))
         lines.append(f"预估总价：{show_returned(total)}")
-    lines.extend(
+        lines.extend(
+            [
+                f"参考时效：{eta_display(record.get('reference_eta'))}",
+                f"船期：{ship_schedule_display(record.get('ship_schedule'))}",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                f"参考时效：{eta_display(record.get('reference_eta'))}",
+                f"船期：{ship_schedule_display(record.get('ship_schedule'))}",
+            ]
+        )
+        lines.extend(quantity_detail_lines(record))
+    return lines
+
+
+def render_plan(record: Dict[str, Any], index: Any = None, labels: Optional[List[str]] = None, include_final_price: bool = False) -> str:
+    plan_index = index if index is not None else record.get("option_no", "")
+    header = f"方案 {plan_index}"
+    plan_labels = labels if labels is not None else (record.get("labels") or [])
+    label = label_text(plan_labels)
+    if label:
+        header += f"｜{label}"
+    return "\n".join([header, *option_detail_lines(record, include_quote=include_final_price)])
+
+
+def render_task_header(task: Dict[str, Any], action: str) -> str:
+    return "\n".join(
         [
-            f"参考时效：{eta_display(record.get('reference_eta'))}",
-            f"船期：{ship_schedule_display(record.get('ship_schedule'))}",
+            "【当前报价任务】",
+            f"任务编号：{task.get('task_id')}",
+            f"状态：{display_status(task.get('status'))}",
+            f"本次动作：{action}",
         ]
     )
-    return lines
+
+
+def render_recognized_fields(task: Dict[str, Any]) -> str:
+    fields = task.get("extracted_fields", {})
+    lines = [
+        "【询价信息识别】",
+        f"客户原文：{task.get('customer_original_message', '')}",
+        "已识别信息：",
+        f"- 国家/区域：{fields.get('country') or fields.get('route_area') or ''}",
+        f"- 仓库代码：{', '.join(fields.get('warehouse_codes', [])) if fields.get('warehouse_codes') else fields.get('warehouse_code', '')}",
+        f"- 起运仓：{fields.get('origin_warehouse', '')}",
+        f"- 重量：{fields.get('weight_display') or (format_money(fields.get('weight_kg')) + ' KG' if fields.get('weight_kg') is not None else '')}",
+        f"- 体积：{format_money(fields.get('volume_cbm')) + ' CBM' if fields.get('volume_cbm') is not None else ''}",
+        f"- 件数：{fields.get('piece_count', '')}",
+        f"- 税务类型：{fields.get('tax_type', '')}",
+        f"- 运输方式：{fields.get('shipping_method', '')}",
+        f"- 派送方式：{fields.get('delivery_method', '')}",
+        f"- 时效偏好：{fields.get('time_preference', '')}",
+    ]
+    return "\n".join(lines)
+
+
+def render_missing_fields(missing: List[str]) -> str:
+    missing_text = "\n".join(f"- {item}" for item in missing) if missing else "无"
+    return f"【缺失信息】\n{missing_text}"
+
+
+def render_single_warehouse_result(options: List[Dict[str, Any]], limit: int) -> str:
+    return option_cards(options, limit)
+
+
+def render_multi_warehouse_result(results: List[Dict[str, Any]]) -> str:
+    return "\n\n".join(batch_option_cards(r) for r in results) if results else "-"
+
+
+def render_margin_result(results: List[Dict[str, Any]], limit: int, is_batch: bool = False) -> str:
+    return final_quote_batch_cards(results, limit) if is_batch else final_quote_cards(results, limit)
+
+
+PLAN_FIELD_ORDER = [
+    "来源报价表",
+    "工作簿",
+    "渠道",
+    "运输方式",
+    "起运仓",
+    "税务类型",
+    "计费方式",
+    "成本单价",
+    "参考时效",
+    "船期",
+]
+
+FINAL_PLAN_FIELD_ORDER = [
+    "来源报价表",
+    "工作簿",
+    "渠道",
+    "运输方式",
+    "起运仓",
+    "税务类型",
+    "计费方式",
+    "成本单价",
+    "报价单价",
+    "预估总价",
+    "参考时效",
+    "船期",
+]
+
+OPTIONAL_TRACE_LABELS = {"仓库代码", "仓库名", "邮编", "原始行号"}
+OPTIONAL_QUANTITY_LABELS = {"重量", "体积", "件数"}
+
+
+def validate_rendered_plan_template(plan_text: str, include_final_price: bool = False) -> Tuple[bool, List[str]]:
+    """Test helper: verify required plan fields appear once and in canonical order."""
+    lines = [line.strip() for line in plan_text.splitlines() if line.strip()]
+    if not lines or not lines[0].startswith("方案 "):
+        return False, ["缺少方案标题"]
+    labels = [line.split("：", 1)[0] for line in lines[1:] if "：" in line]
+    required = FINAL_PLAN_FIELD_ORDER if include_final_price else PLAN_FIELD_ORDER
+    positions: List[int] = []
+    errors: List[str] = []
+    for label in required:
+        if label not in labels:
+            errors.append(f"缺少字段：{label}")
+        else:
+            positions.append(labels.index(label))
+    if positions != sorted(positions):
+        errors.append("字段顺序错误")
+
+    for label in labels:
+        if label in required or label in OPTIONAL_TRACE_LABELS or label in OPTIONAL_QUANTITY_LABELS:
+            continue
+        errors.append(f"未知字段：{label}")
+    if not include_final_price:
+        for quantity_label in OPTIONAL_QUANTITY_LABELS:
+            if quantity_label in labels and labels.index(quantity_label) < labels.index("船期"):
+                errors.append(f"{quantity_label} 必须位于船期之后")
+    else:
+        for quantity_label in OPTIONAL_QUANTITY_LABELS:
+            if quantity_label in labels:
+                if labels.index(quantity_label) < labels.index("报价单价") or labels.index(quantity_label) > labels.index("预估总价"):
+                    errors.append(f"{quantity_label} 必须位于报价单价和预估总价之间")
+    return not errors, errors
 
 
 def customer_label_text(labels: List[str]) -> str:
@@ -561,7 +716,7 @@ def parse_eta_days(value: Any) -> Optional[float]:
 
 
 def eta_display(value: Any) -> str:
-    text = str(value).strip() if value not in [None, ""] else ""
+    text = compact_display_text(value)
     return text or "未返回"
 
 
@@ -684,6 +839,11 @@ def extract_explicit_origin_warehouse(message: str) -> str:
     ordered_origins = ["深圳", "东莞", "中山", "长沙", "宁波", "义乌", "广州", "上海"]
     present = [origin for origin in ordered_origins if origin in text]
     if not present:
+        return ""
+    # A single city is descriptive context, not a strict warehouse filter.
+    # Keeping the backend search broad avoids hiding valid routes that are
+    # maintained under another origin table.
+    if len(present) < 2:
         return ""
     if set(["深圳", "东莞", "中山"]).issubset(set(present)):
         return "深圳/东莞/中山"
@@ -1254,11 +1414,7 @@ def create_task(
 def option_cards(options: List[Dict[str, Any]], limit: int) -> str:
     lines: List[str] = []
     for opt in options[:limit]:
-        label = label_text(opt.get("labels") or [])
-        header = f"方案 {opt.get('option_no')}"
-        if label:
-            header += f"｜{label}"
-        lines.extend([header, *option_detail_lines(opt), ""])
+        lines.extend([render_plan(opt, opt.get("option_no"), opt.get("labels") or []), ""])
     return "\n".join(lines).rstrip() if lines else "-"
 
 
@@ -1377,11 +1533,7 @@ def batch_option_cards(result: Dict[str, Any]) -> str:
         return "\n".join(lines).rstrip()
 
     for opt in selected:
-        label = label_text(opt.get("labels") or [])
-        header = f"方案 {opt.get('batch_option_no', opt.get('option_no'))}"
-        if label:
-            header += f"｜{label}"
-        lines.extend([header, *option_detail_lines(opt), ""])
+        lines.extend([render_plan(opt, opt.get("batch_option_no", opt.get("option_no")), opt.get("labels") or []), ""])
     if not any("Fastest ETA" in opt.get("labels", []) for opt in selected):
         lines.append("该仓库当前接口未返回可比较时效，暂不标注时效最快方案。")
     return "\n".join(lines).rstrip()
@@ -1406,7 +1558,8 @@ def batch_stage1_output(
     total_candidates = sum(int(r.get("total", 0)) for r in results)
     displayed_count = sum(len(r.get("selected_options", [])) for r in results)
     no_result_count = sum(1 for r in results if not r.get("selected_options"))
-    result_cards = "\n\n".join(batch_option_cards(r) for r in results) if results else "-"
+    result_cards = render_multi_warehouse_result(results)
+    missing = [] if displayed_count else missing_info(task.get("extracted_fields", {}), False, None)
     if displayed_count:
         next_step = """请客服输入毛利率，例如：
 - 统一按 15%
@@ -1426,16 +1579,17 @@ def batch_stage1_output(
     else:
         strategy_note = "- 本批次各仓库重量不同，已按仓库分别查询远程数据库，确保每个仓库使用自己的实际重量段。"
 
-    output = f"""【当前报价任务】
-任务编号：{task.get('task_id')}
-状态：{display_status(task.get('status'))}
-本次动作：{action}
+    output = f"""{render_task_header(task, action)}
+
+{render_recognized_fields(task)}
+
+{render_missing_fields(missing)}
+
+【匹配成本方案】
+{summary_line}
 
 【批量询价识别】
 {batch_recognition_block(task)}
-
-【批量成本方案】
-{summary_line}
 
 {result_cards}
 
@@ -1530,7 +1684,6 @@ def stage1_output(
     options = task.get("matched_cost_options", [])
     display_limit = len(options) if options else int(config.get("max_options_display_stage1", 10))
     missing = missing_info(fields, bool(options), report)
-    missing_text = "\n".join(f"- {item}" for item in missing) if missing else "-"
     found_line = f"共匹配到 {total} 个方案。"
     if options and len(options) > display_limit:
         found_line = (
@@ -1539,7 +1692,7 @@ def stage1_output(
         )
 
     if options:
-        cards = option_cards(options, display_limit)
+        cards = render_single_warehouse_result(options, display_limit)
     elif report.remote_error:
         cards = remote_error_block(report)
     else:
@@ -1556,27 +1709,11 @@ def stage1_output(
     display_action = action
     if not options and report.no_match_type == "missing_destination":
         display_action = "创建询价任务，但因缺少关键目的仓信息，未能查询成本"
-    output = f"""【当前报价任务】
-任务编号：{task.get('task_id')}
-状态：{display_status(task.get('status'))}
-本次动作：{display_action}
+    output = f"""{render_task_header(task, display_action)}
 
-【询价信息识别】
-客户原文：{task.get('customer_original_message', '')}
-已识别信息：
-- 国家/区域：{fields.get('country') or fields.get('route_area') or ''}
-- 仓库代码：{', '.join(fields.get('warehouse_codes', [])) if fields.get('warehouse_codes') else fields.get('warehouse_code', '')}
-- 起运仓：{fields.get('origin_warehouse', '')}
-- 重量：{fields.get('weight_display') or (format_money(fields.get('weight_kg')) + ' KG' if fields.get('weight_kg') is not None else '')}
-- 体积：{format_money(fields.get('volume_cbm')) + ' CBM' if fields.get('volume_cbm') is not None else ''}
-- 件数：{fields.get('piece_count', '')}
-- 税务类型：{fields.get('tax_type', '')}
-- 运输方式：{fields.get('shipping_method', '')}
-- 派送方式：{fields.get('delivery_method', '')}
-- 时效偏好：{fields.get('time_preference', '')}
+{render_recognized_fields(task)}
 
-【缺失信息】
-{missing_text}
+{render_missing_fields(missing)}
 
 【匹配成本方案】
 {found_line}
@@ -1948,11 +2085,7 @@ def margin_summary(results: List[Dict[str, Any]]) -> str:
 def final_quote_cards(results: List[Dict[str, Any]], limit: int) -> str:
     lines: List[str] = []
     for r in results[:limit]:
-        label = label_text(r.get("labels") or [])
-        header = f"方案 {r['option_no']}"
-        if label:
-            header += f"｜{label}"
-        lines.extend([header, *option_detail_lines(r, include_quote=True), ""])
+        lines.extend([render_plan(r, r.get("option_no"), r.get("labels") or [], include_final_price=True), ""])
     if len(results) > limit:
         lines.append(f"以上为前 {limit} 个报价方案，已保存全部计算结果。")
     return "\n".join(lines).rstrip() if lines else "-"
@@ -1970,25 +2103,7 @@ def customer_message(results: List[Dict[str, Any]], max_customer_options: int) -
         lines.append(f"以下展示前 {max_customer_options} 个报价方案，如需更多方案可继续筛选。")
         lines.append("")
     for r in results[:max_customer_options]:
-        label = customer_header_label(r.get("labels") or [])
-        header = f"方案 {r['option_no']}"
-        if label:
-            header += f"｜{label}"
-        quote = customer_quote_line(r["currency"], r["final_unit_price"], r.get("price_unit"), r.get("billing_method"))
-        total = r["estimated_total_display"]
-        if r.get("estimated_total") is not None:
-            total = customer_total_line(r["currency"], r.get("estimated_total"))
-        lines.extend(
-            [
-                header,
-                f"渠道：{show_returned(display_channel_path(r))}",
-                f"报价：{show(quote)}",
-                f"预估总价：{show(total)}",
-                f"参考时效：{eta_display(r.get('reference_eta'))}",
-                f"船期：{ship_schedule_display(r.get('ship_schedule'))}",
-                "",
-            ]
-        )
+        lines.extend([render_plan(r, r.get("option_no"), r.get("labels") or [], include_final_price=True), ""])
     best = next((r for r in results if "Best Cost" in r.get("labels", [])), None)
     fastest = next((r for r in results if "Fastest ETA" in r.get("labels", [])), None)
     if best and fastest:
@@ -2026,17 +2141,14 @@ def final_quote_batch_cards(results: List[Dict[str, Any]], limit: int) -> str:
     for code, group in grouped_batch_results(results):
         if shown >= limit:
             break
+        weight_display = next((r.get("batch_weight_display") or r.get("weight_display") for r in group if r.get("batch_weight_display") or r.get("weight_display")), "")
         weight = next((r.get("batch_weight_kg") for r in group if r.get("batch_weight_kg") is not None), None)
-        lines.append(f"{code}｜{format_money(weight)}KG" if weight is not None else code)
+        lines.append(f"{code}｜{weight_display}" if weight_display else (f"{code}｜{format_money(weight)}KG" if weight is not None else code))
         for r in group:
             if shown >= limit:
                 break
             shown += 1
-            label = label_text(r.get("labels") or [])
-            header = f"方案 {r.get('batch_option_no') or shown}"
-            if label:
-                header += f"｜{label}"
-            lines.extend([header, *option_detail_lines(r, include_quote=True), ""])
+            lines.extend([render_plan(r, r.get("batch_option_no") or shown, r.get("labels") or [], include_final_price=True), ""])
     if len(results) > limit:
         lines.append(f"以上为前 {limit} 个报价方案，已保存全部计算结果。")
     return "\n".join(lines).rstrip() if lines else "-"
@@ -2045,29 +2157,12 @@ def final_quote_batch_cards(results: List[Dict[str, Any]], limit: int) -> str:
 def customer_batch_message(results: List[Dict[str, Any]]) -> str:
     lines = ["您好，根据您目前提供的信息，给您按仓库整理了以下参考报价：", ""]
     for code, group in grouped_batch_results(results):
+        weight_display = next((r.get("batch_weight_display") or r.get("weight_display") for r in group if r.get("batch_weight_display") or r.get("weight_display")), "")
         weight = next((r.get("batch_weight_kg") for r in group if r.get("batch_weight_kg") is not None), None)
-        lines.append(f"{code}｜{format_money(weight)}KG" if weight is not None else code)
+        lines.append(f"{code}｜{weight_display}" if weight_display else (f"{code}｜{format_money(weight)}KG" if weight is not None else code))
         lines.append("")
         for r in group:
-            label = customer_header_label(r.get("labels") or [])
-            header = f"方案 {r.get('batch_option_no') or r.get('option_no')}"
-            if label:
-                header += f"｜{label}"
-            quote = customer_quote_line(r["currency"], r["final_unit_price"], r.get("price_unit"), r.get("billing_method"))
-            total = r["estimated_total_display"]
-            if r.get("estimated_total") is not None:
-                total = customer_total_line(r["currency"], r.get("estimated_total"))
-            lines.extend(
-                [
-                    header,
-                    f"渠道：{show_returned(display_channel_path(r))}",
-                    f"报价：{show(quote)}",
-                    f"预估总价：{show(total)}",
-                    f"参考时效：{eta_display(r.get('reference_eta'))}",
-                    f"船期：{ship_schedule_display(r.get('ship_schedule'))}",
-                    "",
-                ]
-            )
+            lines.extend([render_plan(r, r.get("batch_option_no") or r.get("option_no"), r.get("labels") or [], include_final_price=True), ""])
     lines.append("以上为参考报价，不含偏远费、附加费、保险费、提货费及特殊货物费用，最终价格以确认货物信息和地址后为准。")
     return "\n".join(lines)
 

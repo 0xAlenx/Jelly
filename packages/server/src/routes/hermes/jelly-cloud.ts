@@ -1,22 +1,54 @@
 import Router from '@koa/router'
 import { Readable } from 'stream'
 import { randomBytes, randomUUID } from 'crypto'
-import { activateDevice, cloudFetch, getOrCreateLocalProxySecret, loginWithLicenseKey, logoutCloudSession, requireActivatedDeviceSession } from '../../services/jellyai/device-session'
+import {
+  activateDevice,
+  cloudFetch,
+  cloudFetchForLocalProxySecret,
+  getOrCreateLocalProxySecret,
+  hostedCloudFetch,
+  loginWithHostedLicenseKey,
+  loginWithLicenseKey,
+  logoutCloudSession,
+  logoutHostedCloudSession,
+  requireActivatedDeviceSession,
+} from '../../services/jellyai/device-session'
 import { createUser, findUserByUsername, updateUser } from '../../db/hermes/users-store'
 import { issueUserJwt } from '../../middleware/user-auth'
 import { listProfileNamesFromDisk } from '../../services/hermes/hermes-profile'
 import { AgentBridgeClient, type AgentBridgeMessage } from '../../services/hermes/agent-bridge'
+import { ensureHostedProfile } from '../../services/jellyai/hosted-profile'
+import { hostedAccountIdFromUsername, hostedUsername, isJellyWebHostedMode } from '../../services/jellyai/web-hosted-mode'
 
 function error(ctx: any, err: unknown) {
   const code = err instanceof Error ? err.message : 'JELLY_GATEWAY_ERROR'
-  ctx.status = code === 'DEVICE_ACTIVATION_REQUIRED' ? 401 : 502
+  ctx.status = [
+    'DEVICE_ACTIVATION_REQUIRED',
+    'HOSTED_SESSION_REQUIRED',
+    'INVALID_LICENSE',
+    'INVALID_REFRESH_TOKEN',
+    'UNAUTHORIZED_LOCAL_PROXY',
+  ].includes(code) ? 401 : 502
   ctx.body = { code, error: code }
 }
 
-function requireLocalProxySecret(ctx: any): boolean {
+function localProxySecret(ctx: any): string {
   const header = String(ctx.headers.authorization ?? '')
-  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : ''
-  return token === getOrCreateLocalProxySecret()
+  return header.startsWith('Bearer ') ? header.slice(7).trim() : ''
+}
+
+function requireDeviceLocalProxySecret(ctx: any): boolean {
+  return localProxySecret(ctx) === getOrCreateLocalProxySecret()
+}
+
+function hostedAccountId(ctx: any): string | null {
+  if (!isJellyWebHostedMode()) return null
+  return hostedAccountIdFromUsername(String(ctx.state?.user?.username ?? ''))
+}
+
+function cloudFetchForUser(ctx: any, path: string, init: RequestInit = {}) {
+  const accountId = hostedAccountId(ctx)
+  return accountId ? hostedCloudFetch(accountId, path, init) : cloudFetch(path, init)
 }
 
 function messageText(content: unknown): AgentBridgeMessage {
@@ -60,7 +92,7 @@ function bridgeFallbackMessage(chunk: { error?: string | null; result?: unknown 
 }
 
 async function runChannelAgent(ctx: any) {
-  if (!requireLocalProxySecret(ctx)) {
+  if (!requireDeviceLocalProxySecret(ctx)) {
     ctx.status = 401
     ctx.body = { code: 'UNAUTHORIZED_LOCAL_PROXY', error: 'Unauthorized local proxy request.' }
     return
@@ -135,13 +167,14 @@ async function runChannelAgent(ctx: any) {
 }
 
 async function proxyModel(ctx: any, endpoint: '/v1/chat/completions' | '/v1/responses') {
-  if (!requireLocalProxySecret(ctx)) {
+  const secret = localProxySecret(ctx)
+  if (!secret) {
     ctx.status = 401
     ctx.body = { code: 'UNAUTHORIZED_LOCAL_PROXY', error: 'Unauthorized local proxy request.' }
     return
   }
   try {
-    const response = await cloudFetch(endpoint, {
+    const response = await cloudFetchForLocalProxySecret(secret, endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -167,7 +200,7 @@ async function proxyModel(ctx: any, endpoint: '/v1/chat/completions' | '/v1/resp
 
 async function proxyCloudFacade(ctx: any, endpoint: '/api/jelly/chat' | '/api/jelly/agent/run' | '/api/jelly/skills/run') {
   try {
-    const response = await cloudFetch(endpoint, {
+    const response = await cloudFetchForUser(ctx, endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(ctx.request.body ?? {}),
@@ -198,9 +231,16 @@ jellyCloudPublicRoutes.post('/api/jelly/cloud/license-login', async (ctx) => {
       ctx.body = { code: 'LICENSE_KEY_REQUIRED', error: 'licenseKey is required.' }
       return
     }
-    await loginWithLicenseKey(licenseKey)
-    const username = 'jellyai-user'
-    const profiles = listProfileNamesFromDisk()
+    const hosted = isJellyWebHostedMode()
+    const hostedSession = hosted ? await loginWithHostedLicenseKey(licenseKey) : null
+    if (!hostedSession) await loginWithLicenseKey(licenseKey)
+    const username = hostedSession ? hostedUsername(hostedSession.accountId) : 'jellyai-user'
+    const profiles = hostedSession
+      ? [await ensureHostedProfile(hostedSession.accountId, hostedSession.localProxySecret)]
+      : listProfileNamesFromDisk()
+    const defaultProfile = hostedSession
+      ? profiles[0]
+      : profiles.includes('default') ? 'default' : profiles[0]
     let user = findUserByUsername(username)
     if (!user) {
       user = createUser({
@@ -208,14 +248,14 @@ jellyCloudPublicRoutes.post('/api/jelly/cloud/license-login', async (ctx) => {
         password: randomBytes(32).toString('hex'),
         role: 'admin',
         profiles,
-        defaultProfile: profiles.includes('default') ? 'default' : profiles[0],
+        defaultProfile,
       })
     } else {
       user = updateUser({
         userId: user.id,
         status: 'active',
         profiles,
-        defaultProfile: profiles.includes('default') ? 'default' : profiles[0],
+        defaultProfile,
       })
     }
     if (!user) throw new Error('LOCAL_JELLY_USER_CREATE_FAILED')
@@ -245,7 +285,7 @@ jellyCloudProtectedRoutes.post('/api/jelly/cloud/device-activate', async (ctx) =
 
 jellyCloudProtectedRoutes.get('/api/jelly/cloud/me', async (ctx) => {
   try {
-    const response = await cloudFetch('/api/jelly/me')
+    const response = await cloudFetchForUser(ctx, '/api/jelly/me')
     ctx.status = response.status
     ctx.body = await response.json()
   } catch (err) {
@@ -254,7 +294,9 @@ jellyCloudProtectedRoutes.get('/api/jelly/cloud/me', async (ctx) => {
 })
 
 jellyCloudProtectedRoutes.post('/api/jelly/cloud/logout', async (ctx) => {
-  await logoutCloudSession()
+  const accountId = hostedAccountId(ctx)
+  if (accountId) await logoutHostedCloudSession(accountId)
+  else await logoutCloudSession()
   ctx.body = { success: true }
 })
 

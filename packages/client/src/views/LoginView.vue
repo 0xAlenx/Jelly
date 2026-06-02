@@ -45,6 +45,7 @@ async function handleLicenseLogin() {
   errorMsg.value = "";
   try {
     const sessionToken = await loginWithLicenseKey(licenseKey.value.trim());
+    localStorage.removeItem("hermes_active_profile_name");
     setApiKey(sessionToken);
     router.replace("/hermes/chat");
   } catch (err: any) {

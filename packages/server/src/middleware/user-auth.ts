@@ -10,6 +10,7 @@ import {
   type UserRole,
 } from '../db/hermes/users-store'
 import { isJellyManagedMode } from '../services/jellyai/managed-mode'
+import { JELLY_WEB_HOSTED_USER_PREFIX, isJellyWebHostedMode } from '../services/jellyai/web-hosted-mode'
 
 export interface AuthenticatedUser {
   id: number
@@ -93,7 +94,9 @@ function isProtectedHttpPath(path: string): boolean {
 }
 
 function isAllowedLocalUser(user: Pick<UserRecord, 'username'>): boolean {
-  return !isJellyManagedMode() || user.username === JELLY_MANAGED_LOCAL_USERNAME
+  return !isJellyManagedMode() ||
+    user.username === JELLY_MANAGED_LOCAL_USERNAME ||
+    (isJellyWebHostedMode() && user.username.startsWith(JELLY_WEB_HOSTED_USER_PREFIX))
 }
 
 export function signUserJwt(user: Pick<UserRecord, 'id' | 'username' | 'role'>, secret: string, now = Date.now()): string {

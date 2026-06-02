@@ -1,8 +1,10 @@
-import { copyFile, mkdir, readdir, rm, stat } from 'fs/promises'
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'fs/promises'
 import { existsSync, readdirSync } from 'fs'
 import { join, resolve } from 'path'
 import { detectHermesRootHome } from './hermes-path'
 import { logger } from '../logger'
+
+const PRESERVED_RUNTIME_FILES = ['quote_sessions.json'] as const
 
 export interface SkillInjectionTargetResult {
   profile?: string
@@ -145,10 +147,12 @@ export class HermesSkillInjector {
       const sourceSkillDir = join(this.sourceDir, entry.name)
       const targetSkillDir = join(targetDir, entry.name)
       const existed = existsSync(targetSkillDir)
+      const runtimeFiles = await this.readRuntimeFiles(targetSkillDir)
       if (existsSync(targetSkillDir)) {
         await rm(targetSkillDir, { recursive: true, force: true })
       }
       await this.copyDir(sourceSkillDir, targetSkillDir)
+      await this.writeRuntimeFiles(targetSkillDir, runtimeFiles)
       if (existed) result.updated.push(entry.name)
       else result.injected.push(entry.name)
     }
@@ -183,6 +187,22 @@ export class HermesSkillInjector {
       } else if (entry.isFile()) {
         await copyFile(sourcePath, targetPath)
       }
+    }
+  }
+
+  private async readRuntimeFiles(targetDir: string): Promise<Map<string, Buffer>> {
+    const runtimeFiles = new Map<string, Buffer>()
+    for (const filename of PRESERVED_RUNTIME_FILES) {
+      try {
+        runtimeFiles.set(filename, await readFile(join(targetDir, filename)))
+      } catch { /* runtime file does not exist yet */ }
+    }
+    return runtimeFiles
+  }
+
+  private async writeRuntimeFiles(targetDir: string, runtimeFiles: Map<string, Buffer>): Promise<void> {
+    for (const [filename, contents] of runtimeFiles) {
+      await writeFile(join(targetDir, filename), contents)
     }
   }
 }
