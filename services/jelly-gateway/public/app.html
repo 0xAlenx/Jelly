@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JellyAI</title>
+    <link rel="stylesheet" href="/app.css">
+  </head>
+  <body>
+    <main id="login-view" class="login-shell">
+      <form id="login-form" class="login-panel">
+        <div class="login-brand">
+          <img src="/jellyai-logo.png" alt="">
+          <strong>JellyAI</strong>
+        </div>
+        <h1>欢迎使用 JellyAI</h1>
+        <p>请输入 JellyAI 授权码以继续使用。</p>
+        <label>
+          <span>授权码</span>
+          <input name="licenseKey" autocomplete="off" placeholder="请输入 JellyAI 授权码" required>
+        </label>
+        <button type="submit">登录</button>
+        <small id="login-error" class="error"></small>
+      </form>
+    </main>
+
+    <main id="app-view" class="app-shell hidden">
+      <aside>
+        <div class="brand">
+          <img src="/jellyai-logo.png" alt="">
+          <strong>JellyAI</strong>
+        </div>
+        <nav>
+          <button class="nav-button active" type="button" data-target="chat-page">AI 对话</button>
+          <button class="nav-button" type="button" data-target="account-page">账户概览</button>
+        </nav>
+        <section class="history">
+          <div class="history-head">
+            <span>最近对话</span>
+            <button id="sidebar-new-chat" type="button" title="新建对话">+</button>
+          </div>
+          <div id="session-list" class="session-list"></div>
+        </section>
+        <button id="logout" class="logout" type="button">退出登录</button>
+      </aside>
+
+      <section class="content">
+        <section id="chat-page" class="page chat-page">
+          <header>
+            <div>
+              <p class="eyebrow">JellyAI Web</p>
+              <h1>AI 对话</h1>
+              <p id="chat-mode-description">模型由 JellyAI 云端统一管理。</p>
+            </div>
+            <div class="header-actions">
+              <span class="credits-pill">剩余 <strong id="chat-credits-balance">-</strong> 积分</span>
+              <button id="new-chat" class="secondary" type="button">新建对话</button>
+            </div>
+          </header>
+
+          <section class="chat-shell">
+            <div class="mode-bar">
+              <span>当前能力</span>
+              <div class="mode-switch" role="group" aria-label="当前能力">
+                <button class="mode-button active" type="button" data-mode="chat">通用对话</button>
+                <button class="mode-button" type="button" data-mode="logistics-quote">物流报价</button>
+              </div>
+            </div>
+            <div id="messages" class="messages">
+              <div id="empty-chat" class="empty-chat">
+                <img src="/jellyai-logo.png" alt="">
+                <h2>开始新的对话</h2>
+                <p>输入问题后，消息将通过 JellyAI 云端模型网关处理。</p>
+              </div>
+            </div>
+            <form id="chat-form" class="composer">
+              <textarea id="chat-input" name="message" rows="3" placeholder="输入消息，Enter 发送，Shift+Enter 换行" required></textarea>
+              <div class="composer-actions">
+                <small id="chat-error" class="chat-error"></small>
+                <button id="send-message" type="submit">发送</button>
+              </div>
+            </form>
+          </section>
+        </section>
+
+        <section id="account-page" class="page hidden">
+          <header>
+            <div>
+              <p class="eyebrow">JellyAI Web</p>
+              <h1 id="account-name">账户概览</h1>
+              <p id="company-name"></p>
+            </div>
+            <span class="status"><i></i> 已授权</span>
+          </header>
+
+          <section class="stats">
+            <article>
+              <span>剩余积分</span>
+              <strong id="credits-balance">-</strong>
+            </article>
+            <article>
+              <span>今日消耗</span>
+              <strong id="credits-today">-</strong>
+            </article>
+            <article>
+              <span>授权到期</span>
+              <strong id="expires-at">-</strong>
+            </article>
+          </section>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>已开通 Skill</h2>
+                <p>当前授权可使用的能力。</p>
+              </div>
+            </div>
+            <div id="skill-list" class="skill-list"></div>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JellyAI 管理后台</title>
+    <link rel="stylesheet" href="/admin.css">
+  </head>
+  <body>
+    <main id="login-view" class="login-shell">
+      <form id="login-form" class="login-panel">
+        <div class="brand"><span class="brand-mark">J</span><strong>JellyAI</strong></div>
+        <h1>管理后台</h1>
+        <p>客户授权、积分和模型网关控制台</p>
+        <label>管理员账号<input name="username" autocomplete="username" required></label>
+        <label>密码<input name="password" type="password" autocomplete="current-password" required></label>
+        <button type="submit">登录</button>
+        <small id="login-error" class="error"></small>
+      </form>
+    </main>
+
+    <main id="app-view" class="app-shell hidden">
+      <aside>
+        <div class="brand"><span class="brand-mark">J</span><strong>JellyAI</strong></div>
+        <nav>
+          <button class="nav-button active" data-target="overview">总览</button>
+          <button class="nav-button" data-target="accounts">客户授权</button>
+          <button class="nav-button" data-target="models">模型路由</button>
+        </nav>
+        <button id="logout" class="quiet">退出登录</button>
+      </aside>
+      <section class="content">
+        <header><div><h1>JellyAI 管理后台</h1><p>云端商业数据控制中心</p></div><span id="gateway-status" class="gateway-ok">检查模型路由...</span></header>
+
+        <section id="overview" class="page">
+          <div class="stats">
+            <article><span>活跃客户</span><strong id="stat-accounts">-</strong></article>
+            <article><span>今日调用</span><strong id="stat-calls">-</strong></article>
+            <article><span>今日积分消耗</span><strong id="stat-credits-today">-</strong></article>
+            <article><span>客户积分总额</span><strong id="stat-credits">-</strong></article>
+          </div>
+          <article class="panel">
+            <h2>模型网关说明</h2>
+            <p>普通用户不能自行配置模型。所有请求均经过 JellyAI 网关完成授权校验、积分预占、模型调用、结算和日志记录。</p>
+          </article>
+        </section>
+
+        <section id="accounts" class="page hidden">
+          <div class="section-head"><div><h2>客户授权管理</h2><p>管理独立租户、授权码、积分和 Skill 权限。</p></div><button id="show-create-account">新建客户</button></div>
+          <article id="create-account-panel" class="panel hidden">
+            <form id="create-account-form" class="form-grid">
+              <label>用户名<input name="name" required></label>
+              <label>公司名称<input name="companyName" required></label>
+              <label>初始积分<input name="creditsBalance" type="number" min="0" value="10000"></label>
+              <label>有效期<input name="expiresAt" type="date"></label>
+              <button type="submit">创建客户</button>
+            </form>
+            <pre id="account-create-result" class="secret hidden"></pre>
+          </article>
+          <article class="panel table-wrap">
+            <table><thead><tr><th>客户</th><th>公司</th><th>积分</th><th>到期时间</th><th>状态</th><th></th></tr></thead><tbody id="account-rows"></tbody></table>
+          </article>
+          <section id="account-detail" class="hidden">
+            <div class="detail-grid">
+              <article class="panel"><h2 id="detail-title">客户</h2><div id="detail-meta"></div><div class="actions"><button id="issue-license">查看授权码</button><button id="toggle-account" class="secondary">冻结客户</button><button id="collapse-account" class="secondary">收起</button></div><pre id="license-result" class="secret hidden"></pre></article>
+              <article class="panel"><h2>调整积分</h2><form id="credit-form" class="stack"><label>积分变化<input name="amount" type="number" placeholder="例如 1000 或 -100" required></label><label>原因<input name="reason" placeholder="充值、退款或人工调整" required></label><button type="submit">提交调整</button></form></article>
+              <article class="panel"><h2>Skill 权限</h2><div id="skill-list" class="skill-list"></div></article>
+            </div>
+            <div class="detail-grid two">
+              <article class="panel table-wrap"><h2>授权码</h2><table><thead><tr><th>前缀</th><th>状态</th><th>有效期</th><th>最近使用</th><th></th></tr></thead><tbody id="license-rows"></tbody></table></article>
+              <article class="panel table-wrap"><h2>积分流水</h2><table><thead><tr><th>时间</th><th>类型</th><th>变化</th><th>余额</th></tr></thead><tbody id="transaction-rows"></tbody></table></article>
+              <article class="panel table-wrap"><h2>调用日志</h2><table><thead><tr><th>时间</th><th>模型</th><th>Token</th><th>积分</th><th>状态</th></tr></thead><tbody id="usage-rows"></tbody></table></article>
+            </div>
+          </section>
+        </section>
+
+        <section id="models" class="page hidden">
+          <div class="section-head"><div><h2>模型管理</h2><p>统一配置 JellyAI 使用的模型供应商与路由。上游 API Key 只在后端加密保存，不会传给普通用户。</p></div></div>
+          <article class="panel">
+            <h2>模型供应商</h2>
+            <form id="provider-form" class="form-grid provider-form">
+              <label>供应商名称<input name="name" placeholder="例如：OpenAI 兼容网关" required></label>
+              <label>Base URL<input name="baseUrl" placeholder="https://api.example.com/v1" required></label>
+              <label>API Key<input name="apiKey" type="password" autocomplete="new-password" placeholder="新增时必填；留空保留原 Key"></label>
+              <label class="check"><input name="enabled" type="checkbox" checked>启用</label>
+              <label class="check"><input name="isDefault" type="checkbox">默认供应商</label>
+              <button type="submit">保存供应商</button>
+            </form>
+            <p id="provider-save-result" class="form-result"></p>
+          </article>
+          <article class="panel table-wrap">
+            <table><thead><tr><th>供应商</th><th>Base URL</th><th>API Key</th><th>默认</th><th>状态</th><th></th></tr></thead><tbody id="provider-rows"></tbody></table>
+          </article>
+          <article class="panel">
+            <h2>模型路由</h2>
+            <p>默认路由优先使用；默认模型不可用时，系统会按切换顺序从小到大尝试其他已启用模型。</p>
+            <form id="model-form" class="form-grid model-form">
+              <label>展示标识<input name="model" placeholder="jelly-logistics-pro" required></label>
+              <label>供应商<select id="model-provider" name="providerId" required></select></label>
+              <label>上游模型<input name="upstreamModel" placeholder="供应商模型标识" required></label>
+              <label>输入 Token 单价<input name="inputTokenPrice" type="number" min="0" step="0.000001" value="0.001"></label>
+              <label>输出 Token 单价<input name="outputTokenPrice" type="number" min="0" step="0.000001" value="0.002"></label>
+              <label>积分倍率<input name="creditsMultiplier" type="number" min="0" step="0.1" value="1"></label>
+              <label>切换顺序<input name="priority" type="number" min="0" step="1" value="100"></label>
+              <label class="check"><input name="enabled" type="checkbox" checked>启用</label>
+              <label class="check"><input name="isDefault" type="checkbox" checked>默认路由（所有用户使用）</label>
+              <button type="submit">保存模型</button>
+            </form>
+            <p id="model-save-result" class="form-result"></p>
+          </article>
+          <article class="panel table-wrap"><table><thead><tr><th>标识</th><th>供应商</th><th>上游模型</th><th>输入单价</th><th>输出单价</th><th>倍率</th><th>顺序</th><th>状态</th><th></th></tr></thead><tbody id="model-rows"></tbody></table></article>
+        </section>
+      </section>
+    </main>
+    <script src="/admin.js"></script>
+  </body>
+</html>

@@ -1,0 +1,7 @@
+node_modules
+dist
+.env
+deploy/tencent-cloud/.env
+data
+skills/logistics-quote/.venv
+skills/logistics-quote/__pycache__

@@ -1,0 +1,15 @@
+{
+  "watch": ["packages/server/src"],
+  "ext": "ts,tsx",
+  "execMap": {
+    "ts": "node -r ts-node/register"
+  },
+  "env": {
+    "NODE_ENV": "development",
+    "TS_NODE_PROJECT": "packages/server/tsconfig.json",
+    "HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN": "0"
+  },
+  "exec": "node -r ts-node/register packages/server/src/index.ts",
+  "nodeArgs": ["--no-warnings"],
+  "delay": "1000"
+}

@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-jellyai}
+      POSTGRES_USER: ${POSTGRES_USER:-jellyai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jellyai} -d ${POSTGRES_DB:-jellyai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  gateway:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 8787
+      DATABASE_URL: postgres://${POSTGRES_USER:-jellyai}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-jellyai}
+      JELLY_JWT_SECRET: ${JELLY_JWT_SECRET:?Set JELLY_JWT_SECRET}
+      JELLY_ACCESS_KEY_PEPPER: ${JELLY_ACCESS_KEY_PEPPER:?Set JELLY_ACCESS_KEY_PEPPER}
+      JELLY_CONFIG_ENCRYPTION_KEY: ${JELLY_CONFIG_ENCRYPTION_KEY:?Set JELLY_CONFIG_ENCRYPTION_KEY}
+      JELLY_ADMIN_USERNAME: ${JELLY_ADMIN_USERNAME:-admin}
+      JELLY_ADMIN_PASSWORD: ${JELLY_ADMIN_PASSWORD:?Set JELLY_ADMIN_PASSWORD}
+      JELLY_MODEL_BASE_URL: ${JELLY_MODEL_BASE_URL:-}
+      JELLY_MODEL_API_KEY: ${JELLY_MODEL_API_KEY:-}
+      JELLY_DEFAULT_MODEL: ${JELLY_DEFAULT_MODEL:-}
+      JELLY_ACCESS_TOKEN_TTL_SECONDS: ${JELLY_ACCESS_TOKEN_TTL_SECONDS:-900}
+      JELLY_REFRESH_TOKEN_TTL_SECONDS: ${JELLY_REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      JELLY_MINIMUM_RESERVATION_CREDITS: ${JELLY_MINIMUM_RESERVATION_CREDITS:-5}
+      JELLY_RESERVATION_OUTPUT_TOKENS: ${JELLY_RESERVATION_OUTPUT_TOKENS:-2048}
+      JELLY_LOGISTICS_QUOTE_STATE_DIR: /app/data/logistics-quote
+      JELLY_LOGISTICS_QUOTE_TIMEOUT_SECONDS: ${JELLY_LOGISTICS_QUOTE_TIMEOUT_SECONDS:-45}
+      JELLY_CORS_ORIGINS: ${JELLY_CORS_ORIGINS:-https://app.jellyai.cloud}
+    volumes:
+      - logistics-quote-data:/app/data/logistics-quote
+    expose:
+      - "8787"
+    ports:
+      - "127.0.0.1:8787:8787"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      gateway:
+        condition: service_healthy
+    environment:
+      JELLY_GATEWAY_DOMAIN: ${JELLY_GATEWAY_DOMAIN:?Set JELLY_GATEWAY_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:
+  logistics-quote-data:
